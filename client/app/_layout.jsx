@@ -23,6 +23,10 @@ export default function RootLayout() {
         name="lessons"
         options={{ title: 'Lessons', tabBarLabel: 'Lessons' }}
       />
+       <Tabs.Screen
+        name="quiz"
+        options={{ title: 'Quiz', tabBarLabel: 'Quiz' }}
+      />
       <Tabs.Screen
         name="fraud"
         options={{ title: 'Fraud', tabBarLabel: 'Fraud' }}

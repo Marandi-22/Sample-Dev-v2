@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import React, { useState } from 'react';
 import {
   View,
@@ -81,8 +82,15 @@ export default function BudgetDashboard() {
     });
     setChecklist(updatedChecklist);
   };
+=======
+import React from 'react';
+import { ScrollView, StyleSheet } from 'react-native';
+import BudgetCalculator from '../components/BudgetCalculator';
+import InvestmentSimulator from '../components/InvestmentSimulator';
+>>>>>>> a65ad52918ea93ee8622ab56c03e881ea4e4cb61
 
   return (
+<<<<<<< HEAD
   <FlatList
     ListHeaderComponent={
       <>
@@ -225,4 +233,15 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginTop: 30,
   },
+=======
+    <ScrollView contentContainerStyle={styles.container}>
+      <BudgetCalculator />
+      <InvestmentSimulator />
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { paddingVertical: 24, backgroundColor: '#f2f2f2' },
+>>>>>>> a65ad52918ea93ee8622ab56c03e881ea4e4cb61
 });
