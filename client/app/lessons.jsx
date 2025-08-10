@@ -1,221 +1,165 @@
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
-  FlatList,
-  Dimensions,
-} from 'react-native';
-import { ProgressBar } from 'react-native-paper'; // For progress bar, install react-native-paper or use your own
-import { Ionicons } from '@expo/vector-icons';
+import React, { useState, useEffect } from "react";
+import { SafeAreaView, ScrollView, StyleSheet, View, Text, Linking } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const screenWidth = Dimensions.get('window').width;
+import FraudCategoryList from "../components/FraudCategoryList";
+import SearchBar from "../components/SearchBar";
+import ActionSteps from "../components/ActionSteps";
+import EmergencyContacts from "../components/EmergencyContacts";
+import FraudHistory from "../components/FraudHistory";
+import TipsSection from "../components/TipsSection";
 
-const days = [
-  { id: '20', label: 'Mon' },
-  { id: '21', label: 'Tue' },
-  { id: '22', label: 'Wed' },
-  { id: '23', label: 'Thu' },
-  { id: '24', label: 'Fri' },
-  { id: '25', label: 'Sat' },
-];
+const colors = {
+  background: "#000000ff",
+  primaryYellow: "#ffffffff",
+  accentOrange: "#F2994A",
+  gentleGreen: "#6FCF97",
+  textPrimary: "#333333",
+  textSecondary: "#858585ff",
+  cardBackground: "#000000ff",
+};
 
-const upcomingLessons = [
-  {
-    id: '1',
-    day: 'Tomorrow',
-    title: 'Food and drinks',
-    icon: 'fast-food-outline',
-    description: 'Learn healthy eating habits',
+// Dummy actions data — replace with real data & actions (phone calls, links, etc)
+const fraudActionsData = {
+  "Phishing Scam": {
+    immediate: [
+      {
+        label: "Call Bank Helpline",
+        description: "Immediately call your bank's helpline to block your account.",
+        action: () => Linking.openURL("tel:1800123456"),
+      },
+      {
+        label: "Change Passwords",
+        description: "Change passwords of your bank and email accounts immediately.",
+        action: () => alert("Navigate to password reset (simulate)."),
+      },
+    ],
+    shortTerm: [
+      {
+        label: "Report to Cyber Cell",
+        description: "File a complaint at your local cybercrime cell website.",
+        action: () => Linking.openURL("https://cybercrime.gov.in/"),
+      },
+    ],
+    longTerm: [
+      {
+        label: "Monitor Accounts",
+        description: "Keep monitoring your accounts for unusual transactions.",
+        action: () => alert("Monitoring instructions..."),
+      },
+    ],
   },
-  {
-    id: '2',
-    day: 'Wednesday',
-    title: 'Greetings',
-    icon: 'gift-outline',
-    description: 'Common phrases and etiquette',
+  "UPI Fraud": {
+    immediate: [
+      {
+        label: "Block UPI Payment",
+        description: "Block your UPI payment app temporarily to avoid loss.",
+        action: () => alert("Open UPI app (simulate)"),
+      },
+      {
+        label: "Call Bank Helpline",
+        description: "Call your bank helpline immediately to report fraud.",
+        action: () => Linking.openURL("tel:1800123456"),
+      },
+    ],
+    shortTerm: [
+      {
+        label: "Report to NPCI",
+        description: "Report UPI fraud to NPCI via their portal.",
+        action: () => Linking.openURL("https://www.npci.org.in/"),
+      },
+    ],
+    longTerm: [
+      {
+        label: "File Police Complaint",
+        description: "File an FIR at your local police station.",
+        action: () => alert("Instructions to file FIR."),
+      },
+    ],
   },
-  {
-    id: '3',
-    day: 'Thursday',
-    title: 'Fruits & Vegetables',
-    icon: 'leaf-outline',
-    description: 'Nutrition and benefits',
-  },
-];
+  // Add more fraud types with similar structure here...
+};
 
-export default function LessonsScreen() {
-  const [selectedDay, setSelectedDay] = useState('21');
-  const [progress, setProgress] = useState(0.23); // 23% progress example
+export default function Lessons() {
+  const [selectedFraud, setSelectedFraud] = useState(null);
+  const [history, setHistory] = useState([]);
+
+  // Load history from AsyncStorage
+  useEffect(() => {
+    AsyncStorage.getItem("fraudHistory").then((stored) => {
+      if (stored) setHistory(JSON.parse(stored));
+    });
+  }, []);
+
+  // Save selected fraud to history
+  useEffect(() => {
+    if (!selectedFraud) return;
+    setHistory((prev) => {
+      const newHistory = [selectedFraud, ...prev.filter((h) => h !== selectedFraud)].slice(0, 10);
+      AsyncStorage.setItem("fraudHistory", JSON.stringify(newHistory));
+      return newHistory;
+    });
+  }, [selectedFraud]);
+
+  const handleSelectFraud = (fraudName) => {
+    setSelectedFraud(fraudName);
+  };
+
+  const handleSearch = (searchText) => {
+    // Basic case-insensitive match against keys
+    const fraudNames = Object.keys(fraudActionsData);
+    const found = fraudNames.find(
+      (name) => name.toLowerCase() === searchText.toLowerCase()
+    );
+    if (found) setSelectedFraud(found);
+    else alert("No data found for this fraud type.");
+  };
 
   return (
-    <View style={styles.screen}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Reading</Text>
-        <TouchableOpacity>
-          <Ionicons name="settings-outline" size={24} color="#fff" />
-        </TouchableOpacity>
-      </View>
-
-      {/* Progress Section */}
-      <View style={styles.progressContainer}>
-        <Text style={styles.progressText}>Your Progress</Text>
-        <Text style={styles.progressPercent}>23% of French</Text>
-        <ProgressBar progress={progress} color="#FFD600" style={styles.progressBar} />
-      </View>
-
-      {/* Days Horizontal Scroll */}
-      <View style={styles.daysContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {days.map((day) => {
-            const isSelected = day.id === selectedDay;
-            return (
-              <TouchableOpacity
-                key={day.id}
-                style={[styles.dayCircle, isSelected && styles.dayCircleSelected]}
-                onPress={() => setSelectedDay(day.id)}
-              >
-                <Text style={[styles.dayNumber, isSelected && styles.dayNumberSelected]}>{day.id}</Text>
-                <Text style={[styles.dayLabel, isSelected && styles.dayLabelSelected]}>{day.label}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
-
-      {/* Upcoming Lessons */}
-      <Text style={styles.upcomingTitle}>Upcoming Lessons</Text>
-      <FlatList
-        data={upcomingLessons}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingBottom: 30 }}
-        renderItem={({ item }) => (
-          <TouchableOpacity style={styles.lessonCard} activeOpacity={0.8}>
-            <View style={styles.iconContainer}>
-              <Ionicons name={item.icon} size={28} color="#FFD600" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.lessonTitle}>{item.day}</Text>
-              <Text style={styles.lessonSubtitle}>{item.title}</Text>
-              <Text style={styles.lessonDescription}>{item.description}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={24} color="#555" />
-          </TouchableOpacity>
+    <SafeAreaView style={styles.container}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 40, paddingHorizontal: 16 }}
+      >
+        <SearchBar onSearch={handleSearch} />
+        <FraudCategoryList onSelect={handleSelectFraud} />
+        <FraudHistory history={history} onSelect={handleSelectFraud} />
+        {selectedFraud ? (
+          <View style={styles.actionContainer}>
+            <Text style={styles.fraudTitle}>{selectedFraud}</Text>
+            <ActionSteps steps={fraudActionsData[selectedFraud]} />
+          </View>
+        ) : (
+          <Text style={styles.instructions}>
+            Select a fraud category or search above to see recommended actions.
+          </Text>
         )}
-      />
-    </View>
+        <EmergencyContacts />
+        <TipsSection />
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
+  container: {
     flex: 1,
-    backgroundColor: '#000',
-    paddingTop: 50,
-    paddingHorizontal: 15,
+    backgroundColor: colors.background,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 25,
+  actionContainer: {
+    marginVertical: 16,
   },
-  headerTitle: {
-    color: '#FFD600',
-    fontSize: 22,
-    fontWeight: 'bold',
-  },
-  progressContainer: {
-    marginBottom: 25,
-  },
-  progressText: {
-    color: '#fff',
-    fontSize: 16,
-    marginBottom: 4,
-  },
-  progressPercent: {
-    color: '#FFD600',
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  progressBar: {
-    height: 8,
-    borderRadius: 10,
-  },
-  daysContainer: {
-    flexDirection: 'row',
-    marginBottom: 25,
-  },
-  dayCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#222',
-    marginRight: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  dayCircleSelected: {
-    backgroundColor: '#FFD600',
-  },
-  dayNumber: {
-    color: '#aaa',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  dayNumberSelected: {
-    color: '#000',
-  },
-  dayLabel: {
-    color: '#666',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  dayLabelSelected: {
-    color: '#000',
-  },
-  upcomingTitle: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '700',
+  fraudTitle: {
+    fontSize: 26,
+    fontWeight: "900",
+    color: colors.primaryYellow,
     marginBottom: 12,
+    textAlign: "center",
   },
-  lessonCard: {
-    backgroundColor: '#222',
-    borderRadius: 14,
-    padding: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  iconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#333',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 15,
-  },
-  lessonTitle: {
-    color: '#FFD600',
-    fontWeight: '700',
-    fontSize: 16,
-  },
-  lessonSubtitle: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  lessonDescription: {
-    color: '#aaa',
-    fontSize: 12,
+  instructions: {
+    fontSize: 18,
+    color: colors.textSecondary,
+    textAlign: "center",
+    marginVertical: 30,
   },
 });
