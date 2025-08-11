@@ -20,7 +20,7 @@ import {
   ActivityIndicator,
 } from 'react-native-paper';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { classify, fetchHistory } from '../services/fraud';
+import { classify, fetchHistory } from '../../services/fraud';
 
 const SCENARIOS = [
   {

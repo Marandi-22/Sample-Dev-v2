@@ -15,16 +15,16 @@ import { Ionicons } from "@expo/vector-icons";
 
 // Thumbnails (your folder: client/assets/thumbnails)
 const IMG = {
-  quizHero: require("../assets/thumbnails/quiz-hero.png"),
-  kyc: require("../assets/thumbnails/sim-kyc.png"),
-  job: require("../assets/thumbnails/sim-job.png"),
-  upi: require("../assets/thumbnails/sim-upi.png"),
+  quizHero: require("../../assets/thumbnails/quiz-hero.png"),
+  kyc: require("../../assets/thumbnails/sim-kyc.png"),
+  job: require("../../assets/thumbnails/sim-job.png"),
+  upi: require("../../assets/thumbnails/sim-upi.png"),
 };
 
 // Simulators (from client/components/scam/*)
-import JobStorySimulator from "../components/scam/job-scam/JobStorySimulator";
-import KYCStorySimulator from "../components/scam/kyc-scam/KYCStorySimulator";
-import UPIStorySimulator from "../components/scam/upi-scam/UPIStorySimulator";
+import JobStorySimulator from "../../components/scam/job-scam/JobStorySimulator";
+import KYCStorySimulator from "../../components/scam/kyc-scam/KYCStorySimulator";
+import UPIStorySimulator from "../../components/scam/upi-scam/UPIStorySimulator";
 
 export default function Play() {
   const [currentSim, setCurrentSim] = React.useState(null); // 'kyc' | 'job' | 'upi' | null
