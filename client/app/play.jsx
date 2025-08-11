@@ -1,7 +1,6 @@
 // client/app/play.jsx
 import React from "react";
 import {
-  SafeAreaView,
   StyleSheet,
   ScrollView,
   View,
@@ -10,6 +9,7 @@ import {
   Image,
   BackHandler,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Text, Button } from "react-native-paper";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -22,11 +22,9 @@ const IMG = {
 };
 
 // Simulators (from client/components/scam/*)
-// NOTE: keeping explicit .tsx extension to help Metro resolve from a .jsx file
 import JobStorySimulator from "../components/scam/job-scam/JobStorySimulator";
 import KYCStorySimulator from "../components/scam/kyc-scam/KYCStorySimulator";
 import UPIStorySimulator from "../components/scam/upi-scam/UPIStorySimulator";
-
 
 export default function Play() {
   const [currentSim, setCurrentSim] = React.useState(null); // 'kyc' | 'job' | 'upi' | null
@@ -77,8 +75,11 @@ export default function Play() {
 
   // Otherwise render the Play hub (hero + stacked list)
   return (
-    <SafeAreaView style={styles.root}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
+    <SafeAreaView style={styles.root} edges={["top"]}>
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: 96 }} // keep clear of bulged Play tab
+        showsVerticalScrollIndicator={false}
+      >
         {/* HERO (Quiz) */}
         <View style={styles.heroWrap}>
           <ImageBackground

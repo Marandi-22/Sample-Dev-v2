@@ -1,5 +1,7 @@
+// client/app/lessons.jsx
 import React, { useState, useEffect } from "react";
-import { SafeAreaView, ScrollView, StyleSheet, View, Text, Linking } from "react-native";
+import { ScrollView, StyleSheet, View, Text, Linking } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import FraudCategoryList from "../components/FraudCategoryList";
@@ -19,7 +21,7 @@ const colors = {
   cardBackground: "#000000ff",
 };
 
-// Dummy actions data — replace with real data & actions (phone calls, links, etc)
+// Dummy actions data — replace with real links/actions
 const fraudActionsData = {
   "Phishing Scam": {
     immediate: [
@@ -77,21 +79,18 @@ const fraudActionsData = {
       },
     ],
   },
-  // Add more fraud types with similar structure here...
 };
 
 export default function Lessons() {
   const [selectedFraud, setSelectedFraud] = useState(null);
   const [history, setHistory] = useState([]);
 
-  // Load history from AsyncStorage
   useEffect(() => {
     AsyncStorage.getItem("fraudHistory").then((stored) => {
       if (stored) setHistory(JSON.parse(stored));
     });
   }, []);
 
-  // Save selected fraud to history
   useEffect(() => {
     if (!selectedFraud) return;
     setHistory((prev) => {
@@ -101,25 +100,20 @@ export default function Lessons() {
     });
   }, [selectedFraud]);
 
-  const handleSelectFraud = (fraudName) => {
-    setSelectedFraud(fraudName);
-  };
+  const handleSelectFraud = (fraudName) => setSelectedFraud(fraudName);
 
   const handleSearch = (searchText) => {
-    // Basic case-insensitive match against keys
     const fraudNames = Object.keys(fraudActionsData);
-    const found = fraudNames.find(
-      (name) => name.toLowerCase() === searchText.toLowerCase()
-    );
+    const found = fraudNames.find((name) => name.toLowerCase() === searchText.toLowerCase());
     if (found) setSelectedFraud(found);
     else alert("No data found for this fraud type.");
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 40, paddingHorizontal: 16 }}
+        contentContainerStyle={{ paddingBottom: 96, paddingHorizontal: 16 }}
       >
         <SearchBar onSearch={handleSearch} />
         <FraudCategoryList onSelect={handleSelectFraud} />
@@ -142,13 +136,8 @@ export default function Lessons() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  actionContainer: {
-    marginVertical: 16,
-  },
+  container: { flex: 1, backgroundColor: colors.background },
+  actionContainer: { marginVertical: 16 },
   fraudTitle: {
     fontSize: 26,
     fontWeight: "900",

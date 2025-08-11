@@ -1,24 +1,36 @@
 import React, { useEffect, useState } from "react";
-import { StyleSheet, View, ScrollView, Text, TouchableOpacity, Linking, Alert } from "react-native";
+import {
+  StyleSheet,
+  View,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  Linking,
+  Alert,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import BannerSlider from "../components/BannerSlider";
 import { getFeedPosts } from "../services/feedService";
 import { Ionicons } from "@expo/vector-icons";
 
-// Changed from HomeScreen to Index (or just use anonymous default export)
 export default function Index() {
   const [posts, setPosts] = useState([]);
   const router = useRouter();
-  
+
   const cardColors = [
-    "#FDE2E4", "#E2F0CB", "#FFEBB7", "#CDE7F0", "#E5D4ED", "#FFD6A5"
+    "#FDE2E4",
+    "#E2F0CB",
+    "#FFEBB7",
+    "#CDE7F0",
+    "#E5D4ED",
+    "#FFD6A5",
   ];
-  
+
   useEffect(() => {
     loadPosts();
   }, []);
-  
+
   const loadPosts = async () => {
     try {
       const data = await getFeedPosts();
@@ -33,8 +45,7 @@ export default function Index() {
       setPosts(filtered);
     } catch (error) {
       console.error("Error loading posts:", error);
-      // Set empty array as fallback
-      setPosts([]);
+      setPosts([]); // fallback
     }
   };
 
@@ -51,11 +62,14 @@ export default function Index() {
       Alert.alert("Error", "Failed to open the article");
     }
   };
-  
+
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        
+    <SafeAreaView style={styles.container} edges={["top"]}>
+      {/* keep content below status bar and above bulged Play tab */}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 96 }}
+      >
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.appName}>FinWise</Text>
@@ -63,21 +77,22 @@ export default function Index() {
             <Ionicons name="person-circle-outline" size={52} color="#FFD700" />
           </TouchableOpacity>
         </View>
-        
+
         {/* Banner Slider */}
         <View style={styles.bannerWrapper}>
           <BannerSlider />
         </View>
-        
+
         {/* Latest Scam Alerts */}
         <Text style={styles.sectionTitle}>Latest Scam Alerts</Text>
+
         {posts.length > 0 ? (
           posts.map((post, index) => (
             <TouchableOpacity
-              key={post.id}
+              key={post.id ?? `post-${index}`}
               style={[
-                styles.newsCard, 
-                { backgroundColor: cardColors[index % cardColors.length] }
+                styles.newsCard,
+                { backgroundColor: cardColors[index % cardColors.length] },
               ]}
               onPress={() => openNewsArticle(post.link)}
             >
@@ -87,12 +102,19 @@ export default function Index() {
                   {post.description}
                 </Text>
               </View>
-              <Ionicons name="open-outline" size={20} color="#666" style={styles.linkIcon} />
+              <Ionicons
+                name="open-outline"
+                size={20}
+                color="#666"
+                style={styles.linkIcon}
+              />
             </TouchableOpacity>
           ))
         ) : (
           <View style={styles.noPostsContainer}>
-            <Text style={styles.noPostsText}>No scam alerts available at the moment.</Text>
+            <Text style={styles.noPostsText}>
+              No scam alerts available at the moment.
+            </Text>
           </View>
         )}
       </ScrollView>
