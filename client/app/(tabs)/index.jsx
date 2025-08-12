@@ -11,8 +11,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import BannerSlider from "../components/BannerSlider";
-import { getFeedPosts } from "../services/feedService";
+import BannerSlider from "../../components/BannerSlider";
+import { getFeedPosts } from "../../services/feedService";
 import { Ionicons } from "@expo/vector-icons";
 
 const BG = "#0B0B0F";

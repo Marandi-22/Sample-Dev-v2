@@ -4,12 +4,12 @@ import { ScrollView, StyleSheet, View, Text, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import FraudCategoryList from "../components/FraudCategoryList";
-import SearchBar from "../components/SearchBar";
-import ActionSteps from "../components/ActionSteps";
-import EmergencyContacts from "../components/EmergencyContacts";
-import FraudHistory from "../components/FraudHistory";
-import TipsSection from "../components/TipsSection";
+import FraudCategoryList from "../../components/FraudCategoryList";
+import SearchBar from "../../components/SearchBar";
+import ActionSteps from "../../components/ActionSteps";
+import EmergencyContacts from "../../components/EmergencyContacts";
+import FraudHistory from "../../components/FraudHistory";
+import TipsSection from "../../components/TipsSection";
 
 const colors = {
   background: "#000000ff",
