@@ -14,28 +14,64 @@ const SLATE = "#64748B";
 const banners = [
   {
     id: "1",
-    title: "Beware of Phishing",
+    title: "🚨 Beware of Phishing",
     description: "Never click links from unknown sources claiming to be banks.",
-    image: require("../assets/images/fraud1.jpeg"),
+    image: require("../assets/images/fraud1.jpeg")
   },
   {
     id: "2",
-    title: "Online Scam Alerts",
-    description: "Stay updated on the latest scam techniques.",
+    title: "⚠ Online Scam Alerts",
+    description: "Stay updated on latest scam techniques and protect your money.",
     image: require("../assets/images/fraud2.jpeg"),
   },
   {
     id: "3",
-    title: "Protect Your Data",
-    description: "Strong passwords & 2FA are your best friends.",
-    image: require("../assets/images/fraud3.jpeg"),
+    title: "🔒 Protect Your Data",
+    description: "Strong passwords & 2FA are your best friends online.",
+    image: require("../assets/images/fraud3.jpeg")
   },
   {
     id: "4",
-    title: "Don’t Share OTPs",
-    description: "No bank will ever ask for your OTP over the phone.",
-    image: require("../assets/images/fraud4.jpeg"),
+    title: "📞 Don’t Share OTPs",
+    description: "RBI warns: No bank will ever ask for your OTP over phone.",
+    image: require("../assets/images/fraud4.jpeg")
   },
+  {
+    id: "5",
+    title: "💳 Keep Cards Safe",
+    description: "Block lost/stolen cards immediately via your bank’s helpline.",
+    image: require("../assets/images/fraud5.jpeg")
+  },
+  {
+    id: "6",
+    title: "🛑 Fake Loan Offers",
+    description: "Avoid instant loan apps without RBI registration verification.",
+    image: require("../assets/images/fraud6.jpeg")
+  },
+  {
+    id: "7",
+    title: "🔔 UPI Fraud Alert",
+    description: "Never approve a collect request from an unknown UPI ID.",
+    image: require("../assets/images/fraud7.jpeg")
+  },
+  {
+    id: "8",
+    title: "🏦 Verify Bank Numbers",
+    description: "Always call your bank using the number on its official website.",
+    image: require("../assets/images/fraud8.jpeg")
+  },
+  {
+    id: "9",
+    title: "📲 App Download Safety",
+    description: "Only install banking apps from official app stores.",
+    image: require("../assets/images/fraud9.jpeg")
+  },
+  {
+    id: "10",
+    title: "💼 Investment Caution",
+    description: "RBI: Avoid schemes promising unrealistic high returns.",
+    image: require("../assets/images/fraud10.jpeg")
+  }
 ];
 
 export default function BannerSlider() {
