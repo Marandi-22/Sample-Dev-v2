@@ -1,8 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { View, Text, StyleSheet, Dimensions, ScrollView, Image } from "react-native";
 
 const { width } = Dimensions.get("window");
-const CARD_W = width * 0.88;
+const CARD_W = width * 0.88; // keep 88% width
 
 const SURFACE = "#121212";
 const BORDER = "#1E293B";
@@ -76,15 +76,30 @@ const banners = [
 
 export default function BannerSlider() {
   const [activeIndex, setActiveIndex] = useState(0);
+  const scrollRef = useRef(null);
+
+  // Auto-slide every 5 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      let nextIndex = activeIndex + 1;
+      if (nextIndex >= banners.length) nextIndex = 0;
+      scrollRef.current?.scrollTo({ x: nextIndex * (CARD_W + 16), animated: true });
+      setActiveIndex(nextIndex);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [activeIndex]);
 
   return (
     <View style={styles.container}>
       <ScrollView
+        ref={scrollRef}
         horizontal
-        pagingEnabled
+        snapToInterval={CARD_W + 16} // snap to each card including margin
+        decelerationRate="fast"
         showsHorizontalScrollIndicator={false}
         onScroll={(e) => {
-          const i = Math.round(e.nativeEvent.contentOffset.x / CARD_W);
+          const i = Math.round(e.nativeEvent.contentOffset.x / (CARD_W + 16));
           setActiveIndex(i);
         }}
         scrollEventThrottle={16}
