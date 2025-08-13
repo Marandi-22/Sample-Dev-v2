@@ -1,425 +1,225 @@
-// client/app/budget.jsx (or BudgetScreen file)
-import React, { useState, useEffect, useRef } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  Button,
-  StyleSheet,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-  TouchableOpacity,
-  Alert,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Ionicons } from '@expo/vector-icons';
+// client/app/(tabs)/budget.jsx
+import React, { useEffect, useMemo, useState } from "react";
+import { View, StyleSheet, ScrollView, TouchableOpacity } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Text, Card, Chip, Button, TextInput, ProgressBar } from "react-native-paper";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useRouter } from "expo-router";
+
+const todayKey = () => new Date().toISOString().slice(0, 10);
+const weekKeys = () => {
+  const d = new Date();
+  const day = d.getDay(); // 0 Sun..6 Sat
+  const start = new Date(d);
+  start.setDate(d.getDate() - day);
+  return Array.from({ length: 7 }, (_, i) => {
+    const x = new Date(start);
+    x.setDate(start.getDate() + i);
+    return x.toISOString().slice(0, 10);
+  });
+};
 
 export default function BudgetScreen() {
-  const [income, setIncome] = useState('');
-  const [expenses, setExpenses] = useState('');
-  const [itemCost, setItemCost] = useState('');
-  const [recommendation, setRecommendation] = useState('');
+  const router = useRouter();
+  const [profile, setProfile] = useState(null);
+  const [notes, setNotes] = useState("");
+  const [checks, setChecks] = useState({}); // { "YYYY-MM-DD": true }
+  const [xp, setXp] = useState(0);
 
-  const [monthlyGoal, setMonthlyGoal] = useState('');
-  const [monthlySaved, setMonthlySaved] = useState('');
-  const [weeklyTarget, setWeeklyTarget] = useState('');
-  const [weeklySpent, setWeeklySpent] = useState('');
-
-  const [selectedGoal, setSelectedGoal] = useState(null); // 'monthly' | 'weekly' | null
-  const [dailyChecklist, setDailyChecklist] = useState([]); // [{date, done}]
-
-  const [chatMessages, setChatMessages] = useState([
-    { id: '1', from: 'bot', text: 'Hi! How can I help with your budget today?' },
-  ]);
-  const [chatInput, setChatInput] = useState('');
-
-  const scrollViewRef = useRef(null);
-
-  // load saved
   useEffect(() => {
     (async () => {
-      try {
-        const mg = await AsyncStorage.getItem('monthlyGoal');
-        const ms = await AsyncStorage.getItem('monthlySaved');
-        const wt = await AsyncStorage.getItem('weeklyTarget');
-        const ws = await AsyncStorage.getItem('weeklySpent');
-        const sel = await AsyncStorage.getItem('selectedGoal');
-        const checklist = await AsyncStorage.getItem('dailyChecklist');
+      const raw =
+        (await AsyncStorage.getItem("@fw_profile_v3")) ||
+        (await AsyncStorage.getItem("@fw_profile_v2")) ||
+        (await AsyncStorage.getItem("@fw_profile_v1"));
+      if (raw) setProfile(JSON.parse(raw));
 
-        if (mg) setMonthlyGoal(mg);
-        if (ms) setMonthlySaved(ms);
-        if (wt) setWeeklyTarget(wt);
-        if (ws) setWeeklySpent(ws);
-        if (sel) setSelectedGoal(sel);
-        if (checklist) setDailyChecklist(JSON.parse(checklist));
-      } catch (e) {
-        console.log('Failed to load data', e);
-      }
+      const notesKey = `@fw_budget_notes_${todayKey()}`;
+      const oldNotes = await AsyncStorage.getItem(notesKey);
+      if (oldNotes) setNotes(oldNotes);
+
+      const ck = await AsyncStorage.getItem("@fw_budget_checks");
+      if (ck) setChecks(JSON.parse(ck));
+
+      const x = await AsyncStorage.getItem("@fw_xp");
+      if (x) setXp(parseInt(x, 10) || 0);
     })();
   }, []);
 
-  // persist
-  useEffect(() => { AsyncStorage.setItem('monthlyGoal', monthlyGoal); }, [monthlyGoal]);
-  useEffect(() => { AsyncStorage.setItem('monthlySaved', monthlySaved); }, [monthlySaved]);
-  useEffect(() => { AsyncStorage.setItem('weeklyTarget', weeklyTarget); }, [weeklyTarget]);
-  useEffect(() => { AsyncStorage.setItem('weeklySpent', weeklySpent); }, [weeklySpent]);
-  useEffect(() => { AsyncStorage.setItem('selectedGoal', selectedGoal ?? ''); }, [selectedGoal]);
-  useEffect(() => { AsyncStorage.setItem('dailyChecklist', JSON.stringify(dailyChecklist)); }, [dailyChecklist]);
-
-  // auto-scroll chat
-  useEffect(() => {
-    if (scrollViewRef.current) {
-      scrollViewRef.current.scrollToEnd({ animated: true });
+  const goal = profile?.goal || "budget";
+  const tagline = useMemo(() => {
+    switch (goal) {
+      case "invest":
+        return "Grow consistently. Track savings and monthly investment.";
+      case "impulse":
+        return "Beat impulse. Stick to daily caps + habits.";
+      case "learn":
+        return "Learn first. Explore lessons & news.";
+      case "emergency":
+        return "Safety first. Use Fraud tools & hotlines.";
+      default:
+        return "Plan income, bills, savings — keep it simple.";
     }
-  }, [chatMessages]);
+  }, [goal]);
 
-  const calculateBudget = () => {
-    const inc = parseFloat(income);
-    const exp = parseFloat(expenses);
-    const cost = parseFloat(itemCost);
-
-    if (isNaN(inc) || isNaN(exp) || isNaN(cost)) {
-      setRecommendation('Please enter valid numbers');
-      return;
-    }
-    const leftover = inc - exp - cost;
-    setRecommendation(
-      leftover >= 0
-        ? `You can afford this! You'll have ₹${leftover.toFixed(2)} left.`
-        : `Not recommended. You will be short ₹${Math.abs(leftover).toFixed(2)}.`
+  if (!profile) {
+    return (
+      <SafeAreaView style={styles.center}>
+        <Text style={{ color: "#9CA3AF" }}>No profile yet. Run onboarding.</Text>
+        <Button mode="contained" style={{ marginTop: 12 }} onPress={() => router.replace("/onboarding")}>
+          Start Onboarding
+        </Button>
+      </SafeAreaView>
     );
-  };
+  }
 
-  const monthlyProgress =
-    monthlyGoal && monthlySaved
-      ? Math.min((parseFloat(monthlySaved) / parseFloat(monthlyGoal)) * 100, 100)
-      : 0;
+  const {
+    currency = "₹",
+    monthlyIncome = 0,
+    fixedBills = 0,
+    savingsPercent = profile.savingsPercent ?? 20,
+    monthlyInvest = profile.monthlyInvest ?? 0,
+    disposable = profile.disposable ?? 0,
+    categories = [],
+    weeklyHabitTarget = profile.weeklyHabitTarget ?? 5,
+  } = profile;
 
-  const weeklyProgress =
-    weeklyTarget && weeklySpent
-      ? Math.min(
-          ((parseFloat(weeklyTarget) - parseFloat(weeklySpent)) / parseFloat(weeklyTarget)) * 100,
-          100
-        )
-      : 0;
+  // Recompute if needed
+  const monthlySavingsCalc = (parseFloat(monthlyIncome) || 0) * (Number(savingsPercent) / 100);
+  const disposableCalc = Math.max(
+    0,
+    (parseFloat(monthlyIncome) || 0) - (parseFloat(fixedBills) || 0) - monthlySavingsCalc - (monthlyInvest || 0)
+  );
+  const finalDisposable = profile.disposable ?? disposableCalc;
+  const suggestedDaily = Math.floor(finalDisposable / 30);
 
-  const sendMessage = () => {
-    if (!chatInput.trim()) return;
+  const wk = weekKeys();
+  const completedThisWeek = wk.filter((k) => checks[k]).length;
+  const progress = Math.min(1, completedThisWeek / weeklyHabitTarget);
 
-    setChatMessages((prev) => [...prev, { id: Date.now().toString(), from: 'user', text: chatInput }]);
-
-    const inputLower = chatInput.toLowerCase();
-    let botReply = "Sorry, I don't understand that.";
-
-    if (inputLower.includes('buy') || inputLower.includes('purchase')) {
-      botReply = recommendation || 'Use the calculator above to check if you can buy an item.';
-    } else if (inputLower.includes('goal')) {
-      botReply = `You have completed ${monthlyProgress.toFixed(1)}% of your monthly goal and ${weeklyProgress.toFixed(
-        1
-      )}% of your weekly target.`;
-    } else if (inputLower.includes('help')) {
-      botReply =
-        'Enter income, expenses, and item cost above to check purchases. Set monthly/weekly goals below.';
+  const toggleDay = async (dayKey) => {
+    const newChecks = { ...checks, [dayKey]: !checks[dayKey] };
+    setChecks(newChecks);
+    await AsyncStorage.setItem("@fw_budget_checks", JSON.stringify(newChecks));
+    // award XP only when turning ON
+    if (newChecks[dayKey]) {
+      const newXp = xp + 10;
+      setXp(newXp);
+      await AsyncStorage.setItem("@fw_xp", String(newXp));
     }
-
-    setTimeout(() => {
-      setChatMessages((prev) => [...prev, { id: (Date.now()+1).toString(), from: 'bot', text: botReply }]);
-    }, 800);
-
-    setChatInput('');
   };
 
-  // ensure today exists in checklist once a goal is selected
-  useEffect(() => {
-    if (!selectedGoal) return;
-    const today = new Date().toISOString().slice(0, 10);
-    const exists = dailyChecklist.find((i) => i.date === today);
-    if (!exists) setDailyChecklist((prev) => [...prev, { date: today, done: false }]);
-  }, [selectedGoal]); // eslint-disable-line
-
-  const toggleTodayDone = () => {
-    const today = new Date().toISOString().slice(0, 10);
-    setDailyChecklist((prev) =>
-      prev.map((i) => (i.date === today ? { ...i, done: !i.done } : i))
-    );
+  const saveNotes = async () => {
+    const key = `@fw_budget_notes_${todayKey()}`;
+    await AsyncStorage.setItem(key, notes);
   };
-
-  const completionPercent =
-    dailyChecklist.length === 0
-      ? 0
-      : (dailyChecklist.filter((i) => i.done).length / dailyChecklist.length) * 100;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.screen}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.headerText}>FinWise</Text>
-          <TouchableOpacity onPress={() => Alert.alert('Profile', 'Coming soon')}>
-            <Ionicons name="person-circle-outline" size={28} color="#FFD600" />
-          </TouchableOpacity>
-        </View>
+    <SafeAreaView style={styles.container}>
+      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 120 }}>
+        <Text variant="headlineLarge" style={styles.title}>Budget</Text>
+        <Text style={styles.muted}>{tagline}</Text>
+        <Chip style={{ alignSelf: "flex-start", marginBottom: 8 }} mode="flat">{(goal || "budget").toUpperCase()}</Chip>
 
-        <ScrollView
-          contentContainerStyle={styles.container}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Budget Calculator */}
-          <View style={[styles.card, { backgroundColor: '#ffdede' }]}>
-            <Text style={styles.cardTitle}>💰 Budget Calculator & Purchase Decision</Text>
-            <TextInput
-              placeholder="Monthly Income (₹)"
-              placeholderTextColor="#555"
-              keyboardType="numeric"
-              value={income}
-              onChangeText={setIncome}
-              style={styles.input}
-            />
-            <TextInput
-              placeholder="Monthly Expenses (₹)"
-              placeholderTextColor="#555"
-              keyboardType="numeric"
-              value={expenses}
-              onChangeText={setExpenses}
-              style={styles.input}
-            />
-            <TextInput
-              placeholder="Item Cost (₹)"
-              placeholderTextColor="#555"
-              keyboardType="numeric"
-              value={itemCost}
-              onChangeText={setItemCost}
-              style={styles.input}
-            />
-            <Button color="#FFD600" title="Check Purchase" onPress={calculateBudget} />
-            {recommendation ? <Text style={styles.resultText}>{recommendation}</Text> : null}
-          </View>
+        {/* Overview */}
+        <Card style={styles.card}>
+          <Card.Content>
+            <Text variant="titleMedium" style={styles.label}>Overview</Text>
+            <Text style={styles.row}>Income: {currency}{Number(monthlyIncome).toLocaleString()}</Text>
+            <Text style={styles.row}>Fixed bills: {currency}{Number(fixedBills).toLocaleString()}</Text>
+            <Text style={styles.row}>Savings ({savingsPercent}%): {currency}{Math.round(monthlySavingsCalc).toLocaleString()}</Text>
+            {goal === "invest" && (
+              <Text style={styles.row}>Invest / month: {currency}{Math.round(monthlyInvest).toLocaleString()}</Text>
+            )}
+            <Text style={[styles.row, styles.highlight]}>Disposable: {currency}{Math.round(finalDisposable).toLocaleString()}</Text>
+            <Text style={styles.muted}>Suggested daily cap ≈ {currency}{suggestedDaily.toLocaleString()}</Text>
+            <Button mode="text" onPress={() => router.push("/profile")} style={{ marginTop: 6 }}>
+              Edit Profile
+            </Button>
+          </Card.Content>
+        </Card>
 
-          {/* Goals Tracker */}
-          <View style={[styles.card, { backgroundColor: '#e5f4db' }]}>
-            <Text style={styles.cardTitle}>📊 Monthly & Weekly Financial Goals</Text>
-            <TextInput
-              placeholder="Monthly Savings Goal (₹)"
-              placeholderTextColor="#555"
-              keyboardType="numeric"
-              value={monthlyGoal}
-              onChangeText={setMonthlyGoal}
-              style={styles.input}
-            />
-            <TextInput
-              placeholder="Amount Saved So Far (₹)"
-              placeholderTextColor="#555"
-              keyboardType="numeric"
-              value={monthlySaved}
-              onChangeText={setMonthlySaved}
-              style={styles.input}
-            />
-            <Text style={styles.progressText}>Monthly Goal Completion: {monthlyProgress.toFixed(1)}%</Text>
-
-            <TextInput
-              placeholder="Weekly Spending Target (₹)"
-              placeholderTextColor="#555"
-              keyboardType="numeric"
-              value={weeklyTarget}
-              onChangeText={setWeeklyTarget}
-              style={styles.input}
-            />
-            <TextInput
-              placeholder="Amount Spent This Week (₹)"
-              placeholderTextColor="#555"
-              keyboardType="numeric"
-              value={weeklySpent}
-              onChangeText={setWeeklySpent}
-              style={styles.input}
-            />
-            <Text style={styles.progressText}>Weekly Target Completion: {weeklyProgress.toFixed(1)}%</Text>
-
-            {/* Goal select */}
-            <View style={{ flexDirection: 'row', marginTop: 10, justifyContent: 'space-around' }}>
-              <Button
-                color={selectedGoal === 'monthly' ? '#FFD600' : '#999'}
-                title="Track Monthly Goal"
-                onPress={() => setSelectedGoal('monthly')}
-              />
-              <Button
-                color={selectedGoal === 'weekly' ? '#FFD600' : '#999'}
-                title="Track Weekly Goal"
-                onPress={() => setSelectedGoal('weekly')}
-              />
-            </View>
-          </View>
-
-          {/* Daily Checklist */}
-          {selectedGoal && (
-            <View style={[styles.card, { backgroundColor: '#d7f9e3' }]}>
-              <Text style={styles.cardTitle}>
-                📅 Daily Checklist for {selectedGoal === 'monthly' ? 'Monthly' : 'Weekly'} Goal
-              </Text>
-
-              {dailyChecklist.length === 0 ? (
-                <Text>No checklist items yet.</Text>
-              ) : (
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
-                  <TouchableOpacity
-                    onPress={toggleTodayDone}
-                    style={[
-                      styles.checkbox,
-                      dailyChecklist[dailyChecklist.length - 1]?.done ? styles.checkboxDone : styles.checkboxUndone,
-                    ]}
-                  >
-                    {dailyChecklist[dailyChecklist.length - 1]?.done && <Text style={{ color: '#fff' }}>✓</Text>}
-                  </TouchableOpacity>
-                  <Text style={{ marginLeft: 10, color: '#111' }}>
-                    {new Date(dailyChecklist[dailyChecklist.length - 1]?.date).toDateString()} -{' '}
-                    {dailyChecklist[dailyChecklist.length - 1]?.done ? 'Completed' : 'Not Completed'}
-                  </Text>
-                </View>
-              )}
-
-              <Text style={{ marginTop: 10, color: '#111' }}>
-                Completion: {completionPercent.toFixed(1)}%
-              </Text>
-            </View>
-          )}
-
-          {/* Chatbot */}
-          <View style={[styles.card, { backgroundColor: '#f9f2d7' }]}>
-            <Text style={styles.cardTitle}>🤖 Chatbot Assistant</Text>
-            <ScrollView
-              ref={scrollViewRef}
-              style={{ maxHeight: 250, marginBottom: 10 }}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              {chatMessages.map((item) => (
-                <View
-                  key={item.id}
-                  style={[styles.chatBubble, item.from === 'user' ? styles.userBubble : styles.botBubble]}
-                >
-                  <Text style={{ color: '#000' }}>{item.text}</Text>
-                </View>
+        {/* Weekly habits + XP */}
+        <Card style={styles.card}>
+          <Card.Content>
+            <Text variant="titleMedium" style={styles.label}>Weekly Habits</Text>
+            <Text style={styles.muted}>Target: {weeklyHabitTarget} days · XP: {xp}</Text>
+            <View style={styles.weekRow}>
+              {wk.map((k) => (
+                <TouchableOpacity key={k} style={[styles.dayBox, checks[k] && styles.dayBoxOn]} onPress={() => toggleDay(k)}>
+                  <Text style={styles.dayText}>{k.slice(8, 10)}</Text>
+                </TouchableOpacity>
               ))}
-            </ScrollView>
-            <View style={styles.chatInputContainer}>
-              <TextInput
-                value={chatInput}
-                onChangeText={setChatInput}
-                placeholder="Ask me about budgeting..."
-                placeholderTextColor="#555"
-                style={styles.chatInput}
-                onSubmitEditing={sendMessage}
-                returnKeyType="send"
-              />
-              <Button color="#FFD600" title="Send" onPress={sendMessage} />
             </View>
-          </View>
+            <ProgressBar progress={progress} style={{ marginTop: 8 }} />
+          </Card.Content>
+        </Card>
 
-          {/* bottom spacer so we never clash with the bulged Play tab */}
-          <View style={{ height: 96 }} />
-        </ScrollView>
-      </KeyboardAvoidingView>
+        {/* Categories */}
+        <Card style={styles.card}>
+          <Card.Content>
+            <Text variant="titleMedium" style={styles.label}>Categories</Text>
+            <View style={styles.chips}>
+              {categories.length
+                ? categories.map((c) => (
+                    <Chip key={c} style={{ margin: 4 }} mode="flat">
+                      {c}
+                    </Chip>
+                  ))
+                : <Text style={styles.muted}>No categories selected</Text>}
+            </View>
+            <Button mode="text" onPress={() => router.push("/onboarding")} style={{ marginTop: 6 }}>
+              Adjust in Onboarding
+            </Button>
+          </Card.Content>
+        </Card>
+
+        {/* Daily Notes */}
+        <Card style={styles.card}>
+          <Card.Content>
+            <Text variant="titleMedium" style={styles.label}>Daily Notes</Text>
+            <TextInput
+              value={notes}
+              onChangeText={setNotes}
+              placeholder="Plan today’s spend or reflect..."
+              multiline
+              style={{ backgroundColor: "#0f0f0f" }}
+            />
+            <Button mode="contained" style={{ marginTop: 10 }} onPress={saveNotes}>
+              Save Note
+            </Button>
+          </Card.Content>
+        </Card>
+
+        {/* Quick nav based on goal */}
+        {goal === "learn" && (
+          <Button mode="contained" onPress={() => router.replace("/(tabs)/index")} style={{ marginTop: 6 }}>
+            Go to News & Learn
+          </Button>
+        )}
+        {goal === "emergency" && (
+          <Button mode="contained" onPress={() => router.replace("/(tabs)/fraud")} style={{ marginTop: 6 }}>
+            Open Emergency Tools
+          </Button>
+        )}
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#000' },
-  screen: { flex: 1, backgroundColor: '#000' },
+  container: { flex: 1, backgroundColor: "#000" },
+  title: { color: "#fff", marginBottom: 4 },
+  muted: { color: "#9CA3AF", marginBottom: 8 },
+  card: { backgroundColor: "#111", marginBottom: 12 },
+  label: { color: "#fff", marginBottom: 8 },
+  row: { color: "#fff", marginBottom: 6 },
+  highlight: { color: "#FF9900", fontWeight: "600" },
+  chips: { flexDirection: "row", flexWrap: "wrap", marginTop: 6 },
+  center: { flex: 1, backgroundColor: "#000", alignItems: "center", justifyContent: "center", padding: 20 },
 
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 15,
-    paddingTop: 12, // SafeArea handles the rest
-    paddingBottom: 8,
-  },
-  headerText: {
-    color: '#FFD600',
-    fontSize: 28,
-    fontWeight: 'bold',
-  },
-
-  container: {
-    paddingHorizontal: 15,
-    paddingBottom: 0,
-  },
-
-  card: {
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 20,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 12,
-    color: '#222',
-  },
-  input: {
-    backgroundColor: 'white',
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 12,
-    fontSize: 16,
-    color: '#111',
-  },
-  resultText: {
-    marginTop: 10,
-    fontWeight: '700',
-    fontSize: 16,
-    color: '#333',
-  },
-  progressText: {
-    fontWeight: '600',
-    marginBottom: 8,
-    color: '#222',
-  },
-
-  chatBubble: {
-    padding: 10,
-    marginVertical: 5,
-    borderRadius: 15,
-    maxWidth: '80%',
-  },
-  userBubble: {
-    backgroundColor: '#FFD600',
-    alignSelf: 'flex-end',
-  },
-  botBubble: {
-    backgroundColor: '#eee',
-    alignSelf: 'flex-start',
-  },
-
-  chatInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  chatInput: {
-    flex: 1,
-    backgroundColor: 'white',
-    borderRadius: 20,
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-    fontSize: 16,
-    marginRight: 10,
-    color: '#111',
-  },
-
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 4,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  checkboxDone: { backgroundColor: '#4caf50' },
-  checkboxUndone: { backgroundColor: '#ccc' },
+  weekRow: { flexDirection: "row", gap: 8, marginTop: 8, flexWrap: "wrap" },
+  dayBox: { width: 40, height: 40, borderRadius: 8, backgroundColor: "#222", alignItems: "center", justifyContent: "center" },
+  dayBoxOn: { backgroundColor: "#FF9900" },
+  dayText: { color: "#fff", fontWeight: "600" },
 });
