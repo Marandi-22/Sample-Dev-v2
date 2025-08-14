@@ -1,225 +1,357 @@
 // client/app/(tabs)/budget.jsx
-import React, { useEffect, useMemo, useState } from "react";
-import { View, StyleSheet, ScrollView, TouchableOpacity } from "react-native";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
+import { StyleSheet, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Text, Card, Chip, Button, TextInput, ProgressBar } from "react-native-paper";
+import {
+  Text, TextInput, Button, Card, Chip, HelperText, Divider, Snackbar, FAB, IconButton
+} from "react-native-paper";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
+import LifeRibbon from "../../components/LifeRibbon";
 
-const todayKey = () => new Date().toISOString().slice(0, 10);
-const weekKeys = () => {
-  const d = new Date();
-  const day = d.getDay(); // 0 Sun..6 Sat
-  const start = new Date(d);
-  start.setDate(d.getDate() - day);
-  return Array.from({ length: 7 }, (_, i) => {
-    const x = new Date(start);
-    x.setDate(start.getDate() + i);
-    return x.toISOString().slice(0, 10);
-  });
+const BG = "#000000";
+const CARD_BG = "#111111";
+const TEXT = "#FFFFFF";
+const SUBTEXT = "#9CA3AF";
+const ORANGE = "#FF9900";
+
+const EVENTS_KEY = "@fw_life_events_v1";
+const ONBOARD_KEY = "@fw_onboarded_v3";
+const K = {
+  age: "@fw_life_age",
+  income: "@fw_life_income",
+  savings: "@fw_life_savings",
+  spendAuto: "@fw_life_spend",
+  goal: "@fw_life_goal",
+  autopilot: "@fw_life_autopilot",
+  expectancy: "@fw_life_expectancy",
+  goals: "@fw_goals_v1",
 };
+const CATS = ["Food", "Travel", "Bills", "Shopping", "Fun", "Other"];
 
-export default function BudgetScreen() {
+export default function Budget() {
   const router = useRouter();
-  const [profile, setProfile] = useState(null);
-  const [notes, setNotes] = useState("");
-  const [checks, setChecks] = useState({}); // { "YYYY-MM-DD": true }
-  const [xp, setXp] = useState(0);
+
+  // ---------- setup detection ----------
+  const [setupDone, setSetupDone] = useState(false);
+  const [checking, setChecking] = useState(true);
+  const checkSetup = useCallback(async () => {
+    setChecking(true);
+    try {
+      const pairs = await AsyncStorage.multiGet([K.goal, K.income, K.savings, K.autopilot, K.expectancy, ONBOARD_KEY]);
+      const map = Object.fromEntries(pairs);
+      const goal = Number(map[K.goal] || 0);
+      const income = Number(map[K.income] || 0);
+      const savings = Number(map[K.savings] || 0);
+      setSetupDone(goal > 0 && (income > 0 || savings > 0));
+    } finally { setChecking(false); }
+  }, []);
+  useEffect(() => { checkSetup(); }, [checkSetup]);
+  useFocusEffect(React.useCallback(() => { checkSetup(); }, [checkSetup]));
+
+  // ---------- events ----------
+  const [events, setEvents] = useState([]);
+  const [type, setType] = useState("spend");
+  const [amount, setAmount] = useState("");
+  const [cat, setCat] = useState(CATS[0]);
+  const [err, setErr] = useState("");
+  const [toast, setToast] = useState("");
 
   useEffect(() => {
     (async () => {
-      const raw =
-        (await AsyncStorage.getItem("@fw_profile_v3")) ||
-        (await AsyncStorage.getItem("@fw_profile_v2")) ||
-        (await AsyncStorage.getItem("@fw_profile_v1"));
-      if (raw) setProfile(JSON.parse(raw));
-
-      const notesKey = `@fw_budget_notes_${todayKey()}`;
-      const oldNotes = await AsyncStorage.getItem(notesKey);
-      if (oldNotes) setNotes(oldNotes);
-
-      const ck = await AsyncStorage.getItem("@fw_budget_checks");
-      if (ck) setChecks(JSON.parse(ck));
-
-      const x = await AsyncStorage.getItem("@fw_xp");
-      if (x) setXp(parseInt(x, 10) || 0);
+      const raw = await AsyncStorage.getItem(EVENTS_KEY);
+      try { setEvents(raw ? JSON.parse(raw) : []); } catch { setEvents([]); }
     })();
   }, []);
-
-  const goal = profile?.goal || "budget";
-  const tagline = useMemo(() => {
-    switch (goal) {
-      case "invest":
-        return "Grow consistently. Track savings and monthly investment.";
-      case "impulse":
-        return "Beat impulse. Stick to daily caps + habits.";
-      case "learn":
-        return "Learn first. Explore lessons & news.";
-      case "emergency":
-        return "Safety first. Use Fraud tools & hotlines.";
-      default:
-        return "Plan income, bills, savings — keep it simple.";
-    }
-  }, [goal]);
-
-  if (!profile) {
-    return (
-      <SafeAreaView style={styles.center}>
-        <Text style={{ color: "#9CA3AF" }}>No profile yet. Run onboarding.</Text>
-        <Button mode="contained" style={{ marginTop: 12 }} onPress={() => router.replace("/onboarding")}>
-          Start Onboarding
-        </Button>
-      </SafeAreaView>
-    );
-  }
-
-  const {
-    currency = "₹",
-    monthlyIncome = 0,
-    fixedBills = 0,
-    savingsPercent = profile.savingsPercent ?? 20,
-    monthlyInvest = profile.monthlyInvest ?? 0,
-    disposable = profile.disposable ?? 0,
-    categories = [],
-    weeklyHabitTarget = profile.weeklyHabitTarget ?? 5,
-  } = profile;
-
-  // Recompute if needed
-  const monthlySavingsCalc = (parseFloat(monthlyIncome) || 0) * (Number(savingsPercent) / 100);
-  const disposableCalc = Math.max(
-    0,
-    (parseFloat(monthlyIncome) || 0) - (parseFloat(fixedBills) || 0) - monthlySavingsCalc - (monthlyInvest || 0)
-  );
-  const finalDisposable = profile.disposable ?? disposableCalc;
-  const suggestedDaily = Math.floor(finalDisposable / 30);
-
-  const wk = weekKeys();
-  const completedThisWeek = wk.filter((k) => checks[k]).length;
-  const progress = Math.min(1, completedThisWeek / weeklyHabitTarget);
-
-  const toggleDay = async (dayKey) => {
-    const newChecks = { ...checks, [dayKey]: !checks[dayKey] };
-    setChecks(newChecks);
-    await AsyncStorage.setItem("@fw_budget_checks", JSON.stringify(newChecks));
-    // award XP only when turning ON
-    if (newChecks[dayKey]) {
-      const newXp = xp + 10;
-      setXp(newXp);
-      await AsyncStorage.setItem("@fw_xp", String(newXp));
-    }
+  const persist = async (list) => {
+    setEvents(list);
+    await AsyncStorage.setItem(EVENTS_KEY, JSON.stringify(list));
   };
-
-  const saveNotes = async () => {
-    const key = `@fw_budget_notes_${todayKey()}`;
-    await AsyncStorage.setItem(key, notes);
+  const add = async () => {
+    setErr("");
+    const a = Number(amount);
+    if (!a || a <= 0) { setErr("Enter a valid amount"); return; }
+    const e = { type, amount: a, cat: type === "spend" ? cat : undefined, ts: new Date().toISOString() };
+    const next = [e, ...(events || [])];
+    await persist(next);
+    setToast(`${type[0].toUpperCase()+type.slice(1)} ₹${a.toLocaleString()} logged`);
+    setAmount("");
   };
+  const sums = useMemo(() => {
+    const now = new Date(); const mth = now.getMonth(); const yr = now.getFullYear();
+    const m = (events || []).filter(e => { const d = new Date(e.ts); return d.getMonth() === mth && d.getFullYear() === yr; });
+    const spend = m.filter(e => e.type === "spend").reduce((s, e) => s + e.amount, 0);
+    const invest = m.filter(e => e.type === "invest").reduce((s, e) => s + e.amount, 0);
+    const credit = m.filter(e => e.type === "credit").reduce((s, e) => s + e.amount, 0);
+    return { spend, invest, credit };
+  }, [events]);
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 120 }}>
-        <Text variant="headlineLarge" style={styles.title}>Budget</Text>
-        <Text style={styles.muted}>{tagline}</Text>
-        <Chip style={{ alignSelf: "flex-start", marginBottom: 8 }} mode="flat">{(goal || "budget").toUpperCase()}</Chip>
+    <SafeAreaView style={styles.safe} edges={["top"]}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={{ padding: 16, paddingBottom: 140 }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {!setupDone && !checking && (
+          <InlineOnboarding onDone={checkSetup} onOpenFull={() => router.push("/onboarding")} />
+        )}
 
-        {/* Overview */}
+        <LifeRibbon />
+        <GoalsManager />
+
+        {/* Quick event input */}
         <Card style={styles.card}>
           <Card.Content>
-            <Text variant="titleMedium" style={styles.label}>Overview</Text>
-            <Text style={styles.row}>Income: {currency}{Number(monthlyIncome).toLocaleString()}</Text>
-            <Text style={styles.row}>Fixed bills: {currency}{Number(fixedBills).toLocaleString()}</Text>
-            <Text style={styles.row}>Savings ({savingsPercent}%): {currency}{Math.round(monthlySavingsCalc).toLocaleString()}</Text>
-            {goal === "invest" && (
-              <Text style={styles.row}>Invest / month: {currency}{Math.round(monthlyInvest).toLocaleString()}</Text>
+            <Text style={styles.h}>Quick update</Text>
+
+            <Text style={[styles.sub, { marginTop: 8 }]}>Type</Text>
+            <ScrollChips value={type} onChange={setType} options={["spend","invest","credit"]} />
+
+            {type === "spend" && (
+              <>
+                <Text style={[styles.sub, { marginTop: 8 }]}>Category</Text>
+                <ScrollChips value={cat} onChange={setCat} options={CATS} />
+              </>
             )}
-            <Text style={[styles.row, styles.highlight]}>Disposable: {currency}{Math.round(finalDisposable).toLocaleString()}</Text>
-            <Text style={styles.muted}>Suggested daily cap ≈ {currency}{suggestedDaily.toLocaleString()}</Text>
-            <Button mode="text" onPress={() => router.push("/profile")} style={{ marginTop: 6 }}>
-              Edit Profile
-            </Button>
-          </Card.Content>
-        </Card>
 
-        {/* Weekly habits + XP */}
-        <Card style={styles.card}>
-          <Card.Content>
-            <Text variant="titleMedium" style={styles.label}>Weekly Habits</Text>
-            <Text style={styles.muted}>Target: {weeklyHabitTarget} days · XP: {xp}</Text>
-            <View style={styles.weekRow}>
-              {wk.map((k) => (
-                <TouchableOpacity key={k} style={[styles.dayBox, checks[k] && styles.dayBoxOn]} onPress={() => toggleDay(k)}>
-                  <Text style={styles.dayText}>{k.slice(8, 10)}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <ProgressBar progress={progress} style={{ marginTop: 8 }} />
-          </Card.Content>
-        </Card>
-
-        {/* Categories */}
-        <Card style={styles.card}>
-          <Card.Content>
-            <Text variant="titleMedium" style={styles.label}>Categories</Text>
-            <View style={styles.chips}>
-              {categories.length
-                ? categories.map((c) => (
-                    <Chip key={c} style={{ margin: 4 }} mode="flat">
-                      {c}
-                    </Chip>
-                  ))
-                : <Text style={styles.muted}>No categories selected</Text>}
-            </View>
-            <Button mode="text" onPress={() => router.push("/onboarding")} style={{ marginTop: 6 }}>
-              Adjust in Onboarding
-            </Button>
-          </Card.Content>
-        </Card>
-
-        {/* Daily Notes */}
-        <Card style={styles.card}>
-          <Card.Content>
-            <Text variant="titleMedium" style={styles.label}>Daily Notes</Text>
             <TextInput
-              value={notes}
-              onChangeText={setNotes}
-              placeholder="Plan today’s spend or reflect..."
-              multiline
-              style={{ backgroundColor: "#0f0f0f" }}
+              label={type==="spend" ? "Amount spent (₹)" : type==="invest" ? "Amount invested (₹)" : "Credit received (₹)"}
+              keyboardType="numeric"
+              value={amount}
+              onChangeText={setAmount}
+              mode="outlined"
+              style={styles.input}
+              outlineStyle={{ borderColor:"#1F2937" }}
+              activeOutlineColor={ORANGE}
+              disabled={!setupDone}
             />
-            <Button mode="contained" style={{ marginTop: 10 }} onPress={saveNotes}>
-              Save Note
+            {!!err && <HelperText type="error" visible>{err}</HelperText>}
+
+            <Button mode="contained" onPress={add} disabled={!setupDone}>
+              {setupDone ? "Add" : "Set up first"}
             </Button>
+
+            <Divider style={{backgroundColor:"#1F2937", marginVertical:8}}/>
+
+            <Text style={styles.sub}>
+              This month · Spent: ₹{sums.spend.toFixed(0)} · Invested: ₹{sums.invest.toFixed(0)} · Credits: ₹{sums.credit.toFixed(0)}
+            </Text>
           </Card.Content>
         </Card>
-
-        {/* Quick nav based on goal */}
-        {goal === "learn" && (
-          <Button mode="contained" onPress={() => router.replace("/(tabs)/index")} style={{ marginTop: 6 }}>
-            Go to News & Learn
-          </Button>
-        )}
-        {goal === "emergency" && (
-          <Button mode="contained" onPress={() => router.replace("/(tabs)/fraud")} style={{ marginTop: 6 }}>
-            Open Emergency Tools
-          </Button>
-        )}
       </ScrollView>
+
+      {/* Always-available onboarding entry */}
+      <FAB
+        icon="cog"
+        style={styles.fab}
+        onPress={() => router.push("/onboarding")}
+        color="#111"
+        size={52}
+        mode="elevated"
+      />
+
+      <Snackbar visible={!!toast} onDismiss={()=>setToast("")} duration={2200} style={{ backgroundColor:"#0F0F0F" }}>
+        <Text style={{ color:TEXT }}>{toast}</Text>
+      </Snackbar>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#000" },
-  title: { color: "#fff", marginBottom: 4 },
-  muted: { color: "#9CA3AF", marginBottom: 8 },
-  card: { backgroundColor: "#111", marginBottom: 12 },
-  label: { color: "#fff", marginBottom: 8 },
-  row: { color: "#fff", marginBottom: 6 },
-  highlight: { color: "#FF9900", fontWeight: "600" },
-  chips: { flexDirection: "row", flexWrap: "wrap", marginTop: 6 },
-  center: { flex: 1, backgroundColor: "#000", alignItems: "center", justifyContent: "center", padding: 20 },
+function ScrollChips({ value, onChange, options }) {
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 6 }}>
+      {options.map((opt) => (
+        <Chip
+          key={opt}
+          selected={value === opt}
+          onPress={() => onChange(opt)}
+          style={{ marginRight: 6, backgroundColor: BG, borderColor: "#1F2937" }}
+          selectedColor={ORANGE}
+          mode="outlined"
+        >
+          {opt[0].toUpperCase() + opt.slice(1)}
+        </Chip>
+      ))}
+    </ScrollView>
+  );
+}
 
-  weekRow: { flexDirection: "row", gap: 8, marginTop: 8, flexWrap: "wrap" },
-  dayBox: { width: 40, height: 40, borderRadius: 8, backgroundColor: "#222", alignItems: "center", justifyContent: "center" },
-  dayBoxOn: { backgroundColor: "#FF9900" },
-  dayText: { color: "#fff", fontWeight: "600" },
+/** Inline onboarding (only shows until saved once) */
+function InlineOnboarding({ onDone, onOpenFull }) {
+  const [age, setAge] = useState("20");
+  const [income, setIncome] = useState("");
+  const [savings, setSavings] = useState("");
+  const [goal, setGoal] = useState(""); // <-- fixed: removed hidden char
+  const [autopilot, setAutopilot] = useState("5000");
+  const [spend, setSpend] = useState("0");
+  const [expectancy, setExpectancy] = useState("80");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const [a,i,s,g,ap,sp,ex] = await AsyncStorage.multiGet([
+        K.age, K.income, K.savings, K.goal, K.autopilot, K.spendAuto, K.expectancy
+      ]);
+      if (a?.[1]) setAge(String(a[1]));
+      if (i?.[1]) setIncome(String(i[1]));
+      if (s?.[1]) setSavings(String(s[1]));
+      if (g?.[1]) setGoal(String(g[1]));
+      if (ap?.[1]) setAutopilot(String(ap[1]));
+      if (sp?.[1]) setSpend(String(sp[1]));
+      if (ex?.[1]) setExpectancy(String(ex[1]));
+    })();
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await AsyncStorage.multiSet([
+        [K.age, age || "20"],
+        [K.income, income || "0"],
+        [K.savings, savings || "0"],
+        [K.goal, goal || "0"],
+        [K.autopilot, autopilot || "0"],
+        [K.spendAuto, spend || "0"],
+        [K.expectancy, expectancy || "80"],
+        [ONBOARD_KEY, "true"],
+      ]);
+      // seed first goal from "goal" if empty
+      try {
+        const raw = await AsyncStorage.getItem(K.goals);
+        const arr = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(arr) || arr.length === 0) {
+          const seed = [{ id:`g_${Date.now()}`, name:"Primary Goal", amount: Number(goal||0) }];
+          await AsyncStorage.setItem(K.goals, JSON.stringify(seed));
+        }
+      } catch {}
+      onDone && onDone();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card style={styles.card}>
+      <Card.Content>
+        <Text variant="titleLarge" style={styles.h}>Set your Life Ribbon</Text>
+        <Text style={styles.sub}>
+          You stay centered. Time moves. Goals are flags ahead.
+          Save/invest to pull them closer; overspend pushes them away.
+        </Text>
+
+        <TextInput label="Current age" keyboardType="numeric" value={age} onChangeText={setAge}
+          mode="outlined" style={styles.input} outlineStyle={{ borderColor:"#1F2937" }} activeOutlineColor={ORANGE} />
+        <TextInput label="Monthly income (₹)" keyboardType="numeric" value={income} onChangeText={setIncome}
+          mode="outlined" style={styles.input} outlineStyle={{ borderColor:"#1F2937" }} activeOutlineColor={ORANGE} />
+        <TextInput label="Current savings (₹)" keyboardType="numeric" value={savings} onChangeText={setSavings}
+          mode="outlined" style={styles.input} outlineStyle={{ borderColor:"#1F2937" }} activeOutlineColor={ORANGE} />
+        <TextInput label="Goal amount (₹)" keyboardType="numeric" value={goal} onChangeText={setGoal}
+          mode="outlined" style={styles.input} outlineStyle={{ borderColor:"#1F2937" }} activeOutlineColor={ORANGE} />
+        <TextInput label="Autopilot invest / month (₹)" keyboardType="numeric" value={autopilot} onChangeText={setAutopilot}
+          mode="outlined" style={styles.input} outlineStyle={{ borderColor:"#1F2937" }} activeOutlineColor={ORANGE} />
+        <TextInput label="Usual monthly spend (₹)" keyboardType="numeric" value={spend} onChangeText={setSpend}
+          mode="outlined" style={styles.input} outlineStyle={{ borderColor:"#1F2937" }} activeOutlineColor={ORANGE} />
+        <TextInput label="Life expectancy (years)" keyboardType="numeric" value={expectancy} onChangeText={setExpectancy}
+          mode="outlined" style={styles.input} outlineStyle={{ borderColor:"#1F2937" }} activeOutlineColor={ORANGE} />
+
+        <Button mode="contained" onPress={save} loading={saving} disabled={saving} style={{ marginTop: 8 }}>
+          Save & continue
+        </Button>
+        <Button mode="text" onPress={() => router.push("/onboarding")} style={{ marginTop: 4 }}>
+          Open full onboarding
+        </Button>
+      </Card.Content>
+    </Card>
+  );
+}
+
+/** Goals Manager — collapsed by default to reduce clutter */
+function GoalsManager() {
+  const [items, setItems] = useState([]);
+  const [name, setName] = useState("");
+  const [amt, setAmt] = useState("");
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => { (async () => {
+    try { const raw = await AsyncStorage.getItem(K.goals); const g = raw ? JSON.parse(raw) : []; setItems(Array.isArray(g)?g:[]); }
+    catch { setItems([]); }
+  })(); }, []);
+  const saveAll = async (next) => { setItems(next); await AsyncStorage.setItem(K.goals, JSON.stringify(next)); };
+  const add = async () => {
+    const a = Number(amt);
+    if (!name.trim() || !a || a <= 0) return;
+    const next = [...items, { id: `g_${Date.now()}`, name: name.trim(), amount: a }];
+    await saveAll(next); setName(""); setAmt("");
+  };
+  const remove = async (id) => { await saveAll(items.filter(g => g.id !== id)); };
+
+  return (
+    <Card style={styles.card}>
+      <Card.Content>
+        <View style={{ flexDirection:"row", alignItems:"center" }}>
+          <Text style={[styles.h, { flex:1 }]}>Goals</Text>
+          <IconButton icon={open ? "chevron-up" : "chevron-down"} size={20} onPress={()=>setOpen(o=>!o)} />
+        </View>
+        {!open ? (
+          <Text style={styles.sub}>
+            {items.length ? `${items.length} goal${items.length>1?"s":""} set · tap to edit` : "No goals yet · tap to add"}
+          </Text>
+        ) : (
+          <>
+            <Text style={styles.sub}>Add the flags you want to reach. The ribbon reads these live.</Text>
+            <TextInput
+              label="Goal name"
+              value={name} onChangeText={setName}
+              mode="outlined" style={styles.input}
+              outlineStyle={{ borderColor:"#1F2937" }} activeOutlineColor={ORANGE}
+            />
+            <TextInput
+              label="Amount (₹)"
+              value={amt} keyboardType="numeric"
+              onChangeText={setAmt}
+              mode="outlined" style={styles.input}
+              outlineStyle={{ borderColor:"#1F2937" }} activeOutlineColor={ORANGE}
+            />
+            <Button mode="contained" onPress={add} disabled={!name || !amt}>Add goal</Button>
+
+            {items.length ? (
+              <View style={{ marginTop: 10 }}>
+                {items.map(g => (
+                  <Card key={g.id} style={{ backgroundColor:"#0F0F0F", borderWidth:1, borderColor:"#1F2937", marginBottom:8 }}>
+                    <Card.Content style={{ flexDirection:"row", justifyContent:"space-between", alignItems:"center" }}>
+                      <View>
+                        <Text style={{ color:"#FFFFFF", fontWeight:"700" }}>{g.name}</Text>
+                        <Text style={{ color:"#9CA3AF" }}>₹ {Number(g.amount||0).toLocaleString()}</Text>
+                      </View>
+                      <Button mode="text" onPress={() => remove(g.id)}>Remove</Button>
+                    </Card.Content>
+                  </Card>
+                ))}
+              </View>
+            ) : (
+              <Text style={[styles.sub, { marginTop: 6 }]}>No goals yet — add your first one above.</Text>
+            )}
+          </>
+        )}
+      </Card.Content>
+    </Card>
+  );
+}
+
+const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: BG },
+  scroll: { flex: 1 },
+  card: { backgroundColor: CARD_BG, borderRadius: 16, borderWidth: 1, borderColor: "#1F2937", marginBottom: 14 },
+  h: { color: TEXT, fontWeight: "700" },
+  sub: { color: SUBTEXT },
+  input: { backgroundColor: "#0B0B0B", color: TEXT, marginTop: 8 },
+  fab: {
+    position: "absolute",
+    right: 16,
+    bottom: 86, // above the bottom tabs
+    backgroundColor: ORANGE,
+  },
 });

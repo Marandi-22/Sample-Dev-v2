@@ -12,8 +12,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Text, Button } from "react-native-paper";
 import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native"; // 👈
 
-// Thumbnails (your folder: client/assets/thumbnails)
 const IMG = {
   quizHero: require("../../assets/thumbnails/quiz-hero.png"),
   kyc: require("../../assets/thumbnails/sim-kyc.png"),
@@ -21,65 +21,61 @@ const IMG = {
   upi: require("../../assets/thumbnails/sim-upi.png"),
 };
 
-// Simulators (from client/components/scam/*)
 import JobStorySimulator from "../../components/scam/job-scam/JobStorySimulator";
 import KYCStorySimulator from "../../components/scam/kyc-scam/KYCStorySimulator";
 import UPIStorySimulator from "../../components/scam/upi-scam/UPIStorySimulator";
+import KBCQuiz from "../../components/quiz/KBCQuiz";
 
 export default function Play() {
+  const navigation = useNavigation();
   const [currentSim, setCurrentSim] = React.useState(null); // 'kyc' | 'job' | 'upi' | null
+  const [showKBC, setShowKBC] = React.useState(false);
 
-  // Android back button: exit simulator -> return to Play list
+  // 👉 Tell Tabs to hide/show based on overlay state
+  React.useEffect(() => {
+    const parent = navigation.getParent?.();
+    if (!parent) return;
+
+    const hide = showKBC || !!currentSim;
+    // set a route param that the Tabs layout will read
+    navigation.setParams?.({ hideTabBar: hide });
+
+    // best-effort immediate style change too (in case layout already supports it)
+    parent.setOptions({ tabBarStyle: { display: hide ? "none" : "flex" } });
+
+    return () => {
+      // safety: restore when unmounting
+      navigation.setParams?.({ hideTabBar: false });
+      parent.setOptions({ tabBarStyle: { display: "flex" } });
+    };
+  }, [navigation, showKBC, currentSim]);
+
+  // Android back handling
   React.useEffect(() => {
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      if (currentSim) {
-        setCurrentSim(null);
-        return true;
-      }
+      if (showKBC) { setShowKBC(false); return true; }
+      if (currentSim) { setCurrentSim(null); return true; }
       return false;
     });
     return () => sub.remove();
-  }, [currentSim]);
+  }, [currentSim, showKBC]);
 
   const simulators = [
-    {
-      id: "kyc",
-      title: "KYC Scam",
-      desc: "Fake KYC expiry prompts that hijack your device.",
-      img: IMG.kyc,
-      likes: "1.2k",
-      plays: "52k",
-    },
-    {
-      id: "job",
-      title: "Job Scam",
-      desc: "Too-good offers that ask for ‘training fees’.",
-      img: IMG.job,
-      likes: "980",
-      plays: "38k",
-    },
-    {
-      id: "upi",
-      title: "UPI QR Scam",
-      desc: "They send a QR; you lose ₹ on scan.",
-      img: IMG.upi,
-      likes: "1.6k",
-      plays: "75k",
-    },
+    { id: "kyc", title: "KYC Scam", desc: "Fake KYC expiry prompts that hijack your device.", img: IMG.kyc, likes: "1.2k", plays: "52k" },
+    { id: "job", title: "Job Scam", desc: "Too-good offers that ask for ‘training fees’.", img: IMG.job, likes: "980", plays: "38k" },
+    { id: "upi", title: "UPI QR Scam", desc: "They send a QR; you lose ₹ on scan.", img: IMG.upi, likes: "1.6k", plays: "75k" },
   ];
 
-  // If a simulator is active, render it full-screen here
+  // Overlays (full-screen)
+  if (showKBC) return <KBCQuiz onExit={() => setShowKBC(false)} />;
   if (currentSim === "job") return <JobStorySimulator onExit={() => setCurrentSim(null)} />;
   if (currentSim === "kyc") return <KYCStorySimulator onExit={() => setCurrentSim(null)} />;
   if (currentSim === "upi") return <UPIStorySimulator onExit={() => setCurrentSim(null)} />;
 
-  // Otherwise render the Play hub (hero + stacked list)
+  // Hub
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
-      <ScrollView
-        contentContainerStyle={{ paddingBottom: 96 }} // keep clear of bulged Play tab
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView contentContainerStyle={{ paddingBottom: 96 }} showsVerticalScrollIndicator={false}>
         {/* HERO (Quiz) */}
         <View style={styles.heroWrap}>
           <ImageBackground
@@ -98,9 +94,7 @@ export default function Play() {
                 textColor="#111"
                 style={styles.heroBtn}
                 icon="play"
-                onPress={() => {
-                  // Hook your quiz route/logic here later
-                }}
+                onPress={() => setShowKBC(true)}
               >
                 Start Quiz
               </Button>
@@ -113,7 +107,7 @@ export default function Play() {
           <Text style={styles.sectionTitle}>Simulators</Text>
         </View>
 
-        {/* STACKED LIST (image left, text right) */}
+        {/* STACKED LIST */}
         <View style={styles.list}>
           {simulators.map((s) => (
             <TouchableOpacity
@@ -122,19 +116,10 @@ export default function Play() {
               style={styles.listItem}
               onPress={() => setCurrentSim(s.id)}
             >
-              {/* Left thumbnail */}
               <Image source={s.img} style={styles.thumb} />
-
-              {/* Right content */}
               <View style={styles.itemBody}>
-                <Text style={styles.itemTitle} numberOfLines={1}>
-                  {s.title}
-                </Text>
-                <Text style={styles.itemDesc} numberOfLines={2}>
-                  {s.desc}
-                </Text>
-
-                {/* Stats + small play pill */}
+                <Text style={styles.itemTitle} numberOfLines={1}>{s.title}</Text>
+                <Text style={styles.itemDesc} numberOfLines={2}>{s.desc}</Text>
                 <View style={styles.itemMeta}>
                   <View style={styles.metaLeft}>
                     <View style={styles.metaChip}>
@@ -146,7 +131,6 @@ export default function Play() {
                       <Text style={styles.metaText}>{s.plays}</Text>
                     </View>
                   </View>
-
                   <View style={styles.playPill}>
                     <Ionicons name="play" size={16} color="#111" />
                   </View>
@@ -165,7 +149,6 @@ const ORANGE = "#FF9900";
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG },
-
   // hero
   heroWrap: { padding: 16, paddingTop: 12 },
   heroImg: { height: 200, justifyContent: "flex-end" },
@@ -175,11 +158,9 @@ const styles = StyleSheet.create({
   heroTitle: { color: "#fff", fontSize: 24, fontWeight: "800" },
   heroSubtitle: { color: "#E5E7EB", marginTop: 4, marginBottom: 10, fontSize: 13 },
   heroBtn: { alignSelf: "flex-start", borderRadius: 10 },
-
   // section
   sectionHeader: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 4 },
   sectionTitle: { color: "#F3F4F6", fontSize: 16, fontWeight: "800" },
-
   // list
   list: { paddingHorizontal: 16, gap: 12, marginTop: 8 },
   listItem: {
