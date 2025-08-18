@@ -1,4 +1,4 @@
-// client/app/play.jsx
+// client/app/(tabs)/play.jsx
 import React from "react";
 import {
   StyleSheet,
@@ -12,71 +12,94 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Text, Button } from "react-native-paper";
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native"; // 👈
+import { useNavigation } from "@react-navigation/native";
 
+/* ---------- thumbnails ---------- */
 const IMG = {
-  quizHero: require("../../assets/thumbnails/quiz-hero.png"),
-  kyc: require("../../assets/thumbnails/sim-kyc.png"),
-  job: require("../../assets/thumbnails/sim-job.png"),
-  upi: require("../../assets/thumbnails/sim-upi.png"),
+  quizHero : require("../../assets/thumbnails/quiz-hero.png"),
+  bankGame : require("../../assets/thumbnails/bank-placeholder.png"),
+  stock    : require("../../assets/thumbnails/stock-market.png"),   // 🆕
+  kyc      : require("../../assets/thumbnails/sim-kyc.png"),
+  job      : require("../../assets/thumbnails/sim-job.png"),
+  upi      : require("../../assets/thumbnails/sim-upi.png"),
 };
 
+/* ---------- overlays ---------- */
+import BankGame          from "../../components/games/bank";
+import StockExchange     from "../../components/games/StockExchange";   // 🆕
 import JobStorySimulator from "../../components/scam/job-scam/JobStorySimulator";
 import KYCStorySimulator from "../../components/scam/kyc-scam/KYCStorySimulator";
 import UPIStorySimulator from "../../components/scam/upi-scam/UPIStorySimulator";
-import KBCQuiz from "../../components/quiz/KBCQuiz";
+import KBCQuiz           from "../../components/quiz/KBCQuiz";
 
 export default function Play() {
   const navigation = useNavigation();
-  const [currentSim, setCurrentSim] = React.useState(null); // 'kyc' | 'job' | 'upi' | null
-  const [showKBC, setShowKBC] = React.useState(false);
 
-  // 👉 Tell Tabs to hide/show based on overlay state
+  /* overlay state
+     'quiz' | 'bank' | 'stock' | 'kyc' | 'job' | 'upi' | null  */
+  const [overlay, setOverlay] = React.useState(null);
+
+  /* hide tab-bar while an overlay is visible */
   React.useEffect(() => {
-    const parent = navigation.getParent?.();
-    if (!parent) return;
-
-    const hide = showKBC || !!currentSim;
-    // set a route param that the Tabs layout will read
+    const tabs = navigation.getParent?.();
+    const hide = !!overlay;
     navigation.setParams?.({ hideTabBar: hide });
-
-    // best-effort immediate style change too (in case layout already supports it)
-    parent.setOptions({ tabBarStyle: { display: hide ? "none" : "flex" } });
+    tabs?.setOptions({ tabBarStyle: { display: hide ? "none" : "flex" } });
 
     return () => {
-      // safety: restore when unmounting
       navigation.setParams?.({ hideTabBar: false });
-      parent.setOptions({ tabBarStyle: { display: "flex" } });
+      tabs?.setOptions({ tabBarStyle: { display: "flex" } });
     };
-  }, [navigation, showKBC, currentSim]);
+  }, [navigation, overlay]);
 
-  // Android back handling
+  /* Android back → close overlay first */
   React.useEffect(() => {
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      if (showKBC) { setShowKBC(false); return true; }
-      if (currentSim) { setCurrentSim(null); return true; }
+      if (overlay) { setOverlay(null); return true; }
       return false;
     });
     return () => sub.remove();
-  }, [currentSim, showKBC]);
+  }, [overlay]);
 
-  const simulators = [
-    { id: "kyc", title: "KYC Scam", desc: "Fake KYC expiry prompts that hijack your device.", img: IMG.kyc, likes: "1.2k", plays: "52k" },
-    { id: "job", title: "Job Scam", desc: "Too-good offers that ask for ‘training fees’.", img: IMG.job, likes: "980", plays: "38k" },
-    { id: "upi", title: "UPI QR Scam", desc: "They send a QR; you lose ₹ on scan.", img: IMG.upi, likes: "1.6k", plays: "75k" },
+  /* ----------- overlay router ----------- */
+  if (overlay === "quiz")   return <KBCQuiz           onExit={() => setOverlay(null)} />;
+  if (overlay === "bank")   return <BankGame          onExit={() => setOverlay(null)} />;
+  if (overlay === "stock")  return <StockExchange     onExit={() => setOverlay(null)} />; // 🆕
+  if (overlay === "job")    return <JobStorySimulator onExit={() => setOverlay(null)} />;
+  if (overlay === "kyc")    return <KYCStorySimulator onExit={() => setOverlay(null)} />;
+  if (overlay === "upi")    return <UPIStorySimulator onExit={() => setOverlay(null)} />;
+
+  /* ---------- cards data ---------- */
+  const games = [
+    {
+      id   : "bank",
+      title: "Banking Tycoon",
+      desc : "Grow deposits, create FDs, top the leaderboard.",
+      img  : IMG.bankGame,
+      likes: "720",
+      plays: "12k",
+    },
+    {
+      id   : "stock",                          // 🆕
+      title: "Stock Exchange",
+      desc : "Buy & sell virtual shares, build wealth.",
+      img  : IMG.stock,
+      likes: "2.3k",
+      plays: "91k",
+    },
   ];
 
-  // Overlays (full-screen)
-  if (showKBC) return <KBCQuiz onExit={() => setShowKBC(false)} />;
-  if (currentSim === "job") return <JobStorySimulator onExit={() => setCurrentSim(null)} />;
-  if (currentSim === "kyc") return <KYCStorySimulator onExit={() => setCurrentSim(null)} />;
-  if (currentSim === "upi") return <UPIStorySimulator onExit={() => setCurrentSim(null)} />;
+  const simulators = [
+    { id:"kyc", title:"KYC Scam", desc:"Fake KYC expiry prompts that hijack your device.", img:IMG.kyc, likes:"1.2k", plays:"52k" },
+    { id:"job", title:"Job Scam", desc:"Too-good offers that ask for ‘training fees’.",     img:IMG.job, likes:"980",  plays:"38k" },
+    { id:"upi", title:"UPI QR Scam", desc:"They send a QR; you lose ₹ on scan.",            img:IMG.upi, likes:"1.6k", plays:"75k" },
+  ];
 
-  // Hub
+  /* ---------- hub ---------- */
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
       <ScrollView contentContainerStyle={{ paddingBottom: 96 }} showsVerticalScrollIndicator={false}>
-        {/* HERO (Quiz) */}
+        {/* HERO (quiz) */}
         <View style={styles.heroWrap}>
           <ImageBackground
             source={IMG.quizHero}
@@ -94,7 +117,7 @@ export default function Play() {
                 textColor="#111"
                 style={styles.heroBtn}
                 icon="play"
-                onPress={() => setShowKBC(true)}
+                onPress={() => setOverlay("quiz")}
               >
                 Start Quiz
               </Button>
@@ -102,54 +125,65 @@ export default function Play() {
           </ImageBackground>
         </View>
 
-        {/* SECTION TITLE */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Simulators</Text>
-        </View>
+        {/* GAMES */}
+        <Section title="Games" items={games} onPress={setOverlay} />
 
-        {/* STACKED LIST */}
-        <View style={styles.list}>
-          {simulators.map((s) => (
-            <TouchableOpacity
-              key={s.id}
-              activeOpacity={0.9}
-              style={styles.listItem}
-              onPress={() => setCurrentSim(s.id)}
-            >
-              <Image source={s.img} style={styles.thumb} />
-              <View style={styles.itemBody}>
-                <Text style={styles.itemTitle} numberOfLines={1}>{s.title}</Text>
-                <Text style={styles.itemDesc} numberOfLines={2}>{s.desc}</Text>
-                <View style={styles.itemMeta}>
-                  <View style={styles.metaLeft}>
-                    <View style={styles.metaChip}>
-                      <Ionicons name="thumbs-up-outline" size={14} color="#D1D5DB" />
-                      <Text style={styles.metaText}>{s.likes}</Text>
-                    </View>
-                    <View style={styles.metaChip}>
-                      <Ionicons name="play-outline" size={14} color="#D1D5DB" />
-                      <Text style={styles.metaText}>{s.plays}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.playPill}>
-                    <Ionicons name="play" size={16} color="#111" />
-                  </View>
-                </View>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </View>
+        {/* SIMULATORS */}
+        <Section title="Simulators" items={simulators} onPress={setOverlay} />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
+/* ---------- reusable sub-components ---------- */
+const Section = ({ title, items, onPress }) => (
+  <>
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+    </View>
+    <View style={styles.list}>
+      {items.map((c) => (
+        <TouchableOpacity key={c.id} activeOpacity={0.9} style={styles.listItem}
+          onPress={() => onPress(c.id)}>
+          <Image source={c.img} style={styles.thumb} />
+          <CardBody card={c} />
+        </TouchableOpacity>
+      ))}
+    </View>
+  </>
+);
+
+const CardBody = ({ card }) => (
+  <View style={styles.itemBody}>
+    <Text style={styles.itemTitle} numberOfLines={1}>{card.title}</Text>
+    <Text style={styles.itemDesc}  numberOfLines={2}>{card.desc}</Text>
+    <View style={styles.itemMeta}>
+      <View style={styles.metaLeft}>
+        <MetaChip icon="thumbs-up-outline" text={card.likes} />
+        <MetaChip icon="play-outline"      text={card.plays} />
+      </View>
+      <View style={styles.playPill}>
+        <Ionicons name="play" size={16} color="#111" />
+      </View>
+    </View>
+  </View>
+);
+
+const MetaChip = ({ icon, text }) => (
+  <View style={styles.metaChip}>
+    <Ionicons name={icon} size={14} color="#D1D5DB" />
+    <Text style={styles.metaText}>{text}</Text>
+  </View>
+);
+
+/* ---------- styles ---------- */
 const BG = "#0A0A0A";
 const ORANGE = "#FF9900";
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG },
-  // hero
+
+  /* hero */
   heroWrap: { padding: 16, paddingTop: 12 },
   heroImg: { height: 200, justifyContent: "flex-end" },
   heroRadius: { borderRadius: 16 },
@@ -158,10 +192,12 @@ const styles = StyleSheet.create({
   heroTitle: { color: "#fff", fontSize: 24, fontWeight: "800" },
   heroSubtitle: { color: "#E5E7EB", marginTop: 4, marginBottom: 10, fontSize: 13 },
   heroBtn: { alignSelf: "flex-start", borderRadius: 10 },
-  // section
+
+  /* section */
   sectionHeader: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 4 },
   sectionTitle: { color: "#F3F4F6", fontSize: 16, fontWeight: "800" },
-  // list
+
+  /* list */
   list: { paddingHorizontal: 16, gap: 12, marginTop: 8 },
   listItem: {
     flexDirection: "row",

@@ -2,11 +2,21 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { View } from "react-native";
 import { Stack } from "expo-router";
-import { Provider as PaperProvider, MD3DarkTheme, ActivityIndicator, Text } from "react-native-paper";
+import {
+  Provider as PaperProvider,
+  MD3DarkTheme,
+  ActivityIndicator,
+  Text,
+} from "react-native-paper";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 
-const TOKEN_KEY = "@fw_auth_token";
+import { WalletProvider } from "../context/WalletContext";   // shared balance
+
+/* ------------------------------------------------------------------ */
+/*  Auth helpers                                                      */
+/* ------------------------------------------------------------------ */
+const TOKEN_KEY   = "@fw_auth_token";
 const ONBOARD_KEY = "@fw_onboarded_v3";
 
 const API_URL =
@@ -21,7 +31,6 @@ export function useAuth() {
   return ctx;
 }
 
-// small helper to avoid fetch hangs on device
 async function fetchWithTimeout(url, opts = {}, timeoutMs = 2500) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
@@ -33,37 +42,31 @@ async function fetchWithTimeout(url, opts = {}, timeoutMs = 2500) {
 }
 
 function AuthProvider({ children }) {
-  const [status, setStatus] = useState("loading"); // loading | signedOut | signedIn
+  const [status, setStatus] = useState("loading");      // loading | signedOut | signedIn
   const [onboarded, setOnboarded] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
         const pairs = await AsyncStorage.multiGet([TOKEN_KEY, ONBOARD_KEY]);
-        const map = Object.fromEntries(pairs || []);
+        const map   = Object.fromEntries(pairs || []);
         const token = map[TOKEN_KEY];
-        const ob = map[ONBOARD_KEY];
+        const ob    = map[ONBOARD_KEY];
         setOnboarded(ob === "true");
 
-        // No token -> always go to Login/Register
-        if (!token) {
-          setStatus("signedOut");
-          return;
-        }
+        if (!token) { setStatus("signedOut"); return; }
 
-        // Validate token quickly; if unreachable -> allow in (offline friendly)
         try {
           const res = await fetchWithTimeout(`${API_URL}/auth/me`, {
             headers: { Authorization: `Bearer ${token}` },
           });
-          if (res.ok) {
-            setStatus("signedIn");
-          } else {
+          if (res.ok) setStatus("signedIn");
+          else {
             await AsyncStorage.removeItem(TOKEN_KEY);
             setStatus("signedOut");
           }
         } catch {
-          // offline or server down -> don't block the app
+          // network failure → allow offline use
           setStatus("signedIn");
         }
       } catch {
@@ -81,13 +84,22 @@ function AuthProvider({ children }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
+/* ------------------------------------------------------------------ */
+/*  Navigation gate                                                   */
+/* ------------------------------------------------------------------ */
 function Gate() {
   const { status, onboarded } = useAuth();
 
   if (status === "loading") {
-    // Inline loader: no external splash route needed
     return (
-      <View style={{ flex: 1, backgroundColor: "#000", alignItems: "center", justifyContent: "center" }}>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: "#000",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
         <ActivityIndicator />
         <Text style={{ color: "#9CA3AF", marginTop: 8 }}>Starting…</Text>
       </View>
@@ -97,7 +109,7 @@ function Gate() {
   if (status === "signedOut") {
     return (
       <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="login" />
+        <Stack.Screen name="login"    />
         <Stack.Screen name="register" />
       </Stack>
     );
@@ -119,23 +131,31 @@ function Gate() {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  Paper MD3 dark theme                                              */
+/* ------------------------------------------------------------------ */
 const darkTheme = {
   ...MD3DarkTheme,
   colors: {
     ...MD3DarkTheme.colors,
-    primary: "#FF9900",
-    background: "#000000",
-    surface: "#111111",
-    onSurface: "#FFFFFF",
+    primary    : "#00C8FF",
+    background : "#000000",
+    surface    : "#111111",
+    onSurface  : "#FFFFFF",
   },
 };
 
+/* ------------------------------------------------------------------ */
+/*  Root layout                                                       */
+/* ------------------------------------------------------------------ */
 export default function RootLayout() {
   return (
     <PaperProvider theme={darkTheme}>
-      <AuthProvider>
-        <Gate />
-      </AuthProvider>
+      <WalletProvider>
+        <AuthProvider>
+          <Gate />
+        </AuthProvider>
+      </WalletProvider>
     </PaperProvider>
   );
 }
