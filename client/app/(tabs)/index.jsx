@@ -1,4 +1,4 @@
-// client/app/index.jsx
+// client/app/(tabs)/index.jsx
 import React, { useEffect, useState } from "react";
 import {
   StyleSheet,
@@ -8,12 +8,15 @@ import {
   TouchableOpacity,
   Linking,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import BannerSlider from "../../components/BannerSlider";
 import { getFeedPosts } from "../../services/feedService";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { API_URL, TOKEN_KEY } from "../../services/api"; // <-- fixed path
 
 const BG = "#0B0B0F";
 const SURFACE = "#121212";
@@ -24,14 +27,44 @@ const BLUE = "#3B82F6";
 const AMBER_DOT = "#F59E0B";
 
 const hostname = (url = "") => {
-  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return ""; }
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
 };
 
 export default function Index() {
   const [posts, setPosts] = useState([]);
+  const [booting, setBooting] = useState(true);
   const router = useRouter();
 
-  useEffect(() => { loadPosts(); }, []);
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = await AsyncStorage.getItem(TOKEN_KEY);
+        if (!token) {
+          router.replace("/login");
+          return;
+        }
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 5000);
+        const res = await fetch(`${API_URL}/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: ctrl.signal,
+        }).catch(() => null);
+        clearTimeout(t);
+        if (!res || !res.ok) {
+          await AsyncStorage.removeItem(TOKEN_KEY);
+          router.replace("/login");
+          return;
+        }
+        await loadPosts();
+      } finally {
+        setBooting(false);
+      }
+    })();
+  }, []);
 
   const loadPosts = async () => {
     try {
@@ -60,6 +93,17 @@ export default function Index() {
     }
   };
 
+  if (booting) {
+    return (
+      <SafeAreaView
+        style={[styles.container, { alignItems: "center", justifyContent: "center" }]}
+      >
+        <ActivityIndicator />
+        <Text style={{ color: MUTED, marginTop: 8 }}>Loading…</Text>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 96 }}>
@@ -78,11 +122,12 @@ export default function Index() {
 
         {/* Quick Actions */}
         <View style={styles.quickRow}>
-          <TouchableOpacity style={styles.quickBtnPrimary} onPress={() => router.push("/fraud")}>
+          {/* These routes were missing; keep buttons or repoint them later */}
+          <TouchableOpacity style={styles.quickBtnPrimary} onPress={() => Alert.alert("Coming soon", "Fraud scanner screen not added yet.")}>
             <Ionicons name="shield-outline" size={18} color={SURFACE} />
             <Text style={styles.quickTextPrimary}>Scan Text</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.quickBtnGhost} onPress={() => router.push("/lessons")}>
+          <TouchableOpacity style={styles.quickBtnGhost} onPress={() => Alert.alert("Coming soon", "Lessons screen not added yet.")}>
             <Ionicons name="school-outline" size={18} color={TEXT} />
             <Text style={styles.quickTextGhost}>Basics</Text>
           </TouchableOpacity>

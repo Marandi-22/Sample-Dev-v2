@@ -224,5 +224,10 @@ def get_history():
     user_hist = [r for r in history if r.get("user_id") == request.user_id]
     return jsonify([r for r in user_hist if not scn or r["scenario"] == scn])
 
+@app.route("/auth/health", methods=["GET"])
+def health():
+    return jsonify({"ok": True, "time": datetime.datetime.utcnow().isoformat() + "Z"})
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

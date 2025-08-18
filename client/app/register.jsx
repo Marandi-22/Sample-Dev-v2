@@ -1,17 +1,9 @@
 import React, { useState } from "react";
-import { View, StyleSheet, KeyboardAvoidingView, Platform } from "react-native";
+import { View, StyleSheet, KeyboardAvoidingView, Platform, Alert } from "react-native";
 import { Text, TextInput, Button, HelperText, Card } from "react-native-paper";
 import { useRouter, Link } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import Constants from "expo-constants";
-
-const TOKEN_KEY = "@fw_auth_token";
-// NOTE: Do NOT set @fw_onboarded_v3 here. Let onboarding screen write it after completion.
-
-const API_URL =
-  Constants?.expoConfig?.extra?.API_URL ??
-  Constants?.manifest?.extra?.API_URL ??
-  "http://127.0.0.1:5000";
+import api, { API_URL, TOKEN_KEY } from "../services/api";
 
 export default function Register() {
   const router = useRouter();
@@ -26,38 +18,27 @@ export default function Register() {
     setErr("");
     setLoading(true);
     try {
-      if (!name.trim() || !email.trim() || !password) {
-        throw new Error("Please fill all fields");
-      }
+      if (!name.trim() || !email.trim() || !password) throw new Error("Please fill all fields");
+      console.log("[Register] API_URL =", API_URL);
 
-      const res = await fetch(`${API_URL}/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          email: email.trim().toLowerCase(),
-          password,
-        }),
+      const { data } = await api.post("/auth/register", {
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        password,
       });
+      if (!data?.token) throw new Error("No token returned");
 
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok || !body?.token) {
-        const msg =
-          body?.error === "email_in_use"
-            ? "Email already in use"
-            : `Registration failed (${body?.error || res.status})`;
-        throw new Error(msg);
-      }
+      await AsyncStorage.setItem(TOKEN_KEY, data.token);
+      // Optional legacy:
+      // await AsyncStorage.setItem("token", data.token);
 
-      // Save JWT so authenticated endpoints work immediately
-      await AsyncStorage.setItem(TOKEN_KEY, body.token);
-
-      // Let Gate decide next screen:
-      // - New user without @fw_onboarded_v3 -> shows Onboarding once
-      // - If flag already set (dev), goes straight to tabs
       router.replace("/");
     } catch (e) {
-      setErr(e.message || "Failed to register");
+      const raw = e?.response?.data?.error || e.message || "Registration failed";
+      const msg = raw === "email_in_use" ? "Email already in use" : String(raw);
+      console.log("[Register] error:", msg, e?.response?.data);
+      setErr(msg);
+      Alert.alert("Registration failed", msg);
     } finally {
       setLoading(false);
     }
@@ -111,13 +92,7 @@ export default function Register() {
 
             {!!err && <HelperText type="error" visible>{err}</HelperText>}
 
-            <Button
-              mode="contained"
-              onPress={onSubmit}
-              loading={loading}
-              disabled={loading || !name || !email || !password}
-              style={styles.button}
-            >
+            <Button mode="contained" onPress={onSubmit} loading={loading} disabled={loading || !name || !email || !password} style={styles.button}>
               Register
             </Button>
 
@@ -140,19 +115,10 @@ const ORANGE = "#FF9900";
 
 const styles = StyleSheet.create({
   root: { flex: 1, justifyContent: "center", padding: 16, backgroundColor: BG },
-  card: {
-    borderRadius: 16,
-    backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: "#1F2937",
-  },
+  card: { borderRadius: 16, backgroundColor: CARD_BG, borderWidth: 1, borderColor: "#1F2937" },
   title: { color: TEXT, marginBottom: 6, fontWeight: "700" },
   sub: { color: SUBTEXT, marginBottom: 12 },
-  input: {
-    backgroundColor: "#0B0B0B",
-    color: TEXT,
-    marginVertical: 8,
-  },
+  input: { backgroundColor: "#0B0B0B", color: TEXT, marginVertical: 8 },
   button: { borderRadius: 10 },
   linkText: { color: ORANGE, textAlign: "center" },
 });

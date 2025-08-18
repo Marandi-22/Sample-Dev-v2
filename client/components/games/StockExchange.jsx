@@ -26,23 +26,19 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as d3 from "d3-shape";
 import Svg, { Path, Circle, Text as SvgText } from "react-native-svg";
 
+/* ─────────────────── helpers ───────────────────────────── */
+const nz = (v, f = 0) => (Number.isFinite(+v) ? +v : f);
+const pos = (v, f = 0) => Math.max(f, nz(v, f));
+const rs = (v) => `₹${nz(v, 0).toLocaleString()}`;
+
 /* ─────────────────── fake-market seed ──────────────────── */
 const SEED_STOCKS = [
-  { sym: "ASTR", name: "AsterTech",   price: 1560.4, cap: 1560.4, pe: 29, growth: -1.1 },
-  { sym: "VRC",  name: "VerdeCore",   price:  871.2, cap:  871.2, pe: 18, growth:  2.8 },
-  { sym: "SUN",  name: "SunArc",      price:  640.9, cap:  640.9, pe: 12, growth:  6.5 },
-  { sym: "NGL",  name: "NextGen Labs",price: 1349.6, cap: 1349.6, pe: 24, growth:  4.2 },
+  { sym: "ASTR", name: "AsterTech",    price: 1560.4, pe: 29, growth: -1.1 },
+  { sym: "VRC",  name: "VerdeCore",    price:  871.2, pe: 18, growth:  2.8 },
+  { sym: "SUN",  name: "SunArc",       price:  640.9, pe: 12, growth:  6.5 },
+  { sym: "NGL",  name: "NextGen Labs", price: 1349.6, pe: 24, growth:  4.2 },
 ];
 const STORE = "@stock_game_v2";
-
-/* ─────────────────── helpers ───────────────────────────── */
-function sparkPoints(n = 18, base = 1) {
-  let y = base;
-  return Array(n).fill(0).map((_, i) => {
-    if (i) y *= 1 + (Math.random() - 0.5) * 0.12;
-    return { x: i, y };
-  });
-}
 
 /* ─────────────────── theme ─────────────────────────────── */
 const COLORS = {
@@ -58,32 +54,57 @@ const COLORS = {
 
 /* █████████████████████████████████████████████████████████ */
 export default function StockExchange({ onExit }) {
-  const { balance, deposit, withdraw } = useWallet();
+  // WalletContext: we’ll use rupees + depositRs/withdrawRs
+  const { rupees, depositRs, withdrawRs, loading: walletLoading } = useWallet?.() ?? {};
 
   /* portfolio state ─ persisted */
   const [data, setData] = useState({ portfolio: {}, stocks: SEED_STOCKS });
+
   useEffect(() => {
     (async () => {
       try {
         const raw = await AsyncStorage.getItem(STORE);
-        if (raw) setData(JSON.parse(raw));
-      } catch {/* ignore */ }
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+
+        // merge with defaults to survive schema changes
+        const savedStocks = Array.isArray(parsed?.stocks) ? parsed.stocks : [];
+        const mergedStocks = SEED_STOCKS.map(seed => {
+          const s = savedStocks.find(x => x.sym === seed.sym);
+          return {
+            ...seed,
+            ...s,
+            price: nz(s?.price, seed.price),
+            growth: nz(s?.growth, seed.growth),
+            pe: nz(s?.pe, seed.pe),
+          };
+        });
+
+        setData({
+          portfolio: parsed?.portfolio && typeof parsed.portfolio === "object" ? parsed.portfolio : {},
+          stocks: mergedStocks,
+        });
+      } catch {
+        // ignore; keep defaults
+      }
     })();
   }, []);
 
   const save = async (next) => {
     setData(next);
-    await AsyncStorage.setItem(STORE, JSON.stringify(next));
+    try { await AsyncStorage.setItem(STORE, JSON.stringify(next)); } catch {}
   };
 
-  /* “market tick” on first mount: nudge prices */
+  /* “market tick” once on mount: nudge prices */
   useEffect(() => {
     const moved = data.stocks.map((s) => {
-      const drift = s.price * (Math.random() - 0.48) * 0.03;
-      const np = +(s.price + drift).toFixed(2);
-      return { ...s, price: np, growth: +(((np - s.price) / s.price) * 100).toFixed(2) };
+      const drift = nz(s.price) * (Math.random() - 0.48) * 0.03;
+      const np = +(nz(s.price) + drift).toFixed(2);
+      const growth = s.price ? +(((np - s.price) / s.price) * 100).toFixed(2) : 0;
+      return { ...s, price: np, growth };
     });
-    save({ ...data, stocks: moved });
+    // only save if we actually have stocks (first render will)
+    if (data.stocks?.length) save({ ...data, stocks: moved });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -91,6 +112,8 @@ export default function StockExchange({ onExit }) {
   const [topTab, setTopTab] = useState("Market"); // Market | Portfolio
   const [modal, setModal]   = useState(null);     // {type:'trade'|'chart'|'news', stock}
   const [toast, setToast]   = useState("");
+
+  const balance = nz(rupees, 0);
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
@@ -106,7 +129,7 @@ export default function StockExchange({ onExit }) {
       <View style={styles.balancePill}>
         <Text style={{ color: COLORS.sub, fontSize: 12 }}>Balance:</Text>
         <Text style={{ color: COLORS.text, fontWeight: "700", marginLeft: 4 }}>
-          ₹{balance.toLocaleString()}
+          {rs(balance)}
         </Text>
       </View>
 
@@ -155,22 +178,28 @@ export default function StockExchange({ onExit }) {
             owned={data.portfolio[modal.stock.sym]}
             balance={balance}
             onClose={() => setModal(null)}
-            onTrade={async (qty, total) => {
-              /* qty +ve = buy, –ve = sell */
+            onTrade={async (qtySigned, totalAbs) => {
+              // qtySigned: +N = buy N shares, -N = sell N shares
+              const qty = nz(qtySigned, 0);
+              const price = nz(modal.stock.price, 0);
+              const total = Math.abs(qty) * price;
+
+              // guards
               if (qty > 0 && total > balance) { setToast("Insufficient balance"); return false; }
-              if (qty < 0 && (!data.portfolio[modal.stock.sym] || data.portfolio[modal.stock.sym].qty < -qty)) {
-                setToast("You don’t own enough shares"); return false;
-              }
-
-              /* wallet */
-              if (qty > 0) await withdraw(total);
-              else await deposit(-total);
-
-              /* portfolio update */
               const cur = data.portfolio[modal.stock.sym] || { qty: 0, avg: 0 };
+              if (qty < 0 && cur.qty < Math.abs(qty)) { setToast("You don’t own enough shares"); return false; }
+
+              // wallet
+              if (qty > 0) await withdrawRs(total);
+              else await depositRs(total);
+
+              // portfolio update
               const newQty = cur.qty + qty;
-              const newAvg = newQty <= 0 ? 0
-                : (cur.avg * cur.qty + modal.stock.price * qty) / newQty;
+              let newAvg = cur.avg;
+              if (qty > 0) {
+                newAvg = (cur.avg * cur.qty + price * qty) / (cur.qty + qty || 1);
+              }
+              if (newQty <= 0) newAvg = 0;
 
               const nextPort = { ...data.portfolio };
               if (newQty <= 0) delete nextPort[modal.stock.sym];
@@ -205,7 +234,7 @@ export default function StockExchange({ onExit }) {
 }
 
 /* ──────────────── Market table ─────────────────────── */
-function MarketTable({ stocks, onAction }) {
+function MarketTable({ stocks = [], onAction }) {
   return (
     <Card style={styles.card}>
       <Card.Content>
@@ -220,17 +249,19 @@ function MarketTable({ stocks, onAction }) {
             </View>
 
             <View style={{ flex: 1 }}>
-              <Text style={styles.price}>₹{s.price.toLocaleString()}</Text>
+              <Text style={styles.price}>{rs(s.price)}</Text>
               <Text style={styles.sub}>per share</Text>
             </View>
 
             <View style={{ width: 70 }}>
-              <Text style={[
-                styles.growth,
-                { color: s.growth >= 0 ? COLORS.green : COLORS.red },
-              ]}>
-                {s.growth >= 0 ? "+" : ""}
-                {s.growth}%
+              <Text
+                style={[
+                  styles.growth,
+                  { color: nz(s.growth, 0) >= 0 ? COLORS.green : COLORS.red },
+                ]}
+              >
+                {nz(s.growth, 0) >= 0 ? "+" : ""}
+                {nz(s.growth, 0)}%
               </Text>
             </View>
 
@@ -256,16 +287,19 @@ function MarketTable({ stocks, onAction }) {
 }
 
 /* ──────────────── Portfolio view ───────────────────── */
-function PortfolioView({ portfolio, stocks, onAction }) {
+function PortfolioView({ portfolio = {}, stocks = [], onAction }) {
   const rows = Object.entries(portfolio).map(([sym, pos]) => {
     const live = stocks.find((s) => s.sym === sym) || {};
-    const value = pos.qty * live.price;
-    const plPct = ((live.price - pos.avg) / pos.avg) * 100 || 0;
-    return { ...pos, ...live, value, plPct };
+    const price = nz(live.price, 0);
+    const qty = nz(pos.qty, 0);
+    const avg = nz(pos.avg, 0);
+    const value = qty * price;
+    const plPct = avg > 0 ? ((price - avg) / avg) * 100 : 0;
+    return { sym, name: live.name || sym, qty, avg, price, value, plPct };
   });
 
-  const totVal = rows.reduce((s, r) => s + r.value, 0);
-  const totPL  = rows.reduce((s, r) => s + (r.livePrice - r.avg) * r.qty, 0);
+  const totVal = rows.reduce((s, r) => s + nz(r.value, 0), 0);
+  const totPL  = rows.reduce((s, r) => s + (nz(r.price, 0) - nz(r.avg, 0)) * nz(r.qty, 0), 0);
 
   return (
     <Card style={styles.card}>
@@ -286,16 +320,18 @@ function PortfolioView({ portfolio, stocks, onAction }) {
 
             <View style={{ flex: 1 }}>
               <Text style={styles.price}>{r.qty} shares</Text>
-              <Text style={styles.sub}>Avg ₹{r.avg.toFixed(2)}</Text>
+              <Text style={styles.sub}>Avg {rs(r.avg.toFixed ? +r.avg.toFixed(2) : r.avg)}</Text>
             </View>
 
             <View style={{ flex: 1 }}>
-              <Text style={styles.price}>₹{r.value.toFixed(2)}</Text>
-              <Text style={[
-                styles.sub,
-                { color: r.plPct >= 0 ? COLORS.green : COLORS.red, fontWeight: "600" },
-              ]}>
-                {r.plPct >= 0 ? "+" : ""}{r.plPct.toFixed(1)}%
+              <Text style={styles.price}>{rs(r.value.toFixed ? +r.value.toFixed(2) : r.value)}</Text>
+              <Text
+                style={[
+                  styles.sub,
+                  { color: r.plPct >= 0 ? COLORS.green : COLORS.red, fontWeight: "600" },
+                ]}
+              >
+                {r.plPct >= 0 ? "+" : ""}{nz(r.plPct, 0).toFixed(1)}%
               </Text>
             </View>
 
@@ -315,12 +351,14 @@ function PortfolioView({ portfolio, stocks, onAction }) {
         {!!rows.length && (
           <>
             <Divider style={div} />
-            <Text style={styles.price}>Total Value  ₹{totVal.toLocaleString()}</Text>
-            <Text style={[
-              styles.sub,
-              { color: totPL >= 0 ? COLORS.green : COLORS.red, fontWeight: "700" },
-            ]}>
-              {totPL >= 0 ? "+" : ""}{totPL.toFixed(0)}
+            <Text style={styles.price}>Total Value  {rs(totVal)}</Text>
+            <Text
+              style={[
+                styles.sub,
+                { color: totPL >= 0 ? COLORS.green : COLORS.red, fontWeight: "700" },
+              ]}
+            >
+              {totPL >= 0 ? "+" : ""}{rs(Math.abs(totPL))}
             </Text>
           </>
         )}
@@ -332,12 +370,14 @@ function PortfolioView({ portfolio, stocks, onAction }) {
 /* ──────────────── Trade modal ──────────────────────── */
 function TradeModal({ stock, owned = {}, balance, onTrade, onClose }) {
   const [qty, setQty] = useState("1");
-  const cost = (+qty || 0) * stock.price;
+  const qtyNum = nz(qty, 0);
+  const price = nz(stock.price, 0);
+  const cost = qtyNum * price;
 
   async function handle(side) {
-    const delta = side === "buy" ? +qty : -qty;
+    const delta = side === "buy" ? qtyNum : -qtyNum;
     if (!delta) return;
-    const ok = await onTrade(delta, Math.abs(delta) * stock.price);
+    const ok = await onTrade(delta, Math.abs(delta) * price);
     if (ok) onClose();
   }
 
@@ -348,8 +388,8 @@ function TradeModal({ stock, owned = {}, balance, onTrade, onClose }) {
           <Card.Content>
             <ModalHead title={`Trade ${stock.name} Shares`} onClose={onClose} />
 
-            <Row label="Current Price" val={stock.price} />
-            <Row label="Shares Owned"  text={owned.qty || 0} mb={8} />
+            <Row label="Current Price" val={price} />
+            <Row label="Shares Owned"  text={nz(owned.qty, 0)} mb={8} />
 
             <TextInput
               label="Quantity"
@@ -363,15 +403,15 @@ function TradeModal({ stock, owned = {}, balance, onTrade, onClose }) {
             />
 
             <Row label="Total Cost"    val={cost} />
-            <Row label="Remaining Balance" val={balance - (cost)} mb={12} />
+            <Row label="Remaining Balance" val={balance - cost} mb={12} />
 
             <Button mode="contained" buttonColor={COLORS.green}
               textColor="#000" style={{ marginBottom: 6 }}
-              onPress={() => handle("buy")} disabled={cost > balance || !qty}>
+              onPress={() => handle("buy")} disabled={cost > balance || !qtyNum}>
               Buy
             </Button>
             <Button mode="outlined" textColor={COLORS.green}
-              onPress={() => handle("sell")} disabled={!(owned.qty > 0)}>
+              onPress={() => handle("sell")} disabled={!(nz(owned.qty, 0) > 0)}>
               Sell
             </Button>
           </Card.Content>
@@ -384,7 +424,7 @@ function TradeModal({ stock, owned = {}, balance, onTrade, onClose }) {
 /* ──────────────── Chart modal (10-month view) ───────── */
 function ChartModal({ stock, onClose }) {
   const pts = useMemo(() => {
-    let v = stock.price;
+    let v = nz(stock.price, 0);
     return Array.from({ length: 10 }, (_, i) => {
       if (i) v *= 1 + (Math.random() - 0.55) * 0.18;
       return { x: i, y: v };
@@ -393,16 +433,15 @@ function ChartModal({ stock, onClose }) {
 
   const W = Dimensions.get("window").width - 64;
   const H = 180;
-  const x = i => (i / 9) * W;
-  const [min, max] = [
-    Math.min(...pts.map(p => p.y)) * 0.96,
-    Math.max(...pts.map(p => p.y)) * 1.04,
-  ];
-  const y = v => H - ((v - min) / (max - min)) * H;
+  const x = (i) => (i / 9) * W;
+  const ymin = Math.min(...pts.map(p => p.y)) * 0.96;
+  const ymax = Math.max(...pts.map(p => p.y)) * 1.04;
+  const y = (v) => H - ((v - ymin) / (ymax - ymin || 1)) * H;
 
-  const path = useMemo(() => (
-    d3.line().x((d, i) => x(i)).y(d => y(d.y)).curve(d3.curveMonotoneX)(pts)
-  ), [pts]);
+  const path = useMemo(
+    () => d3.line().x((d, i) => x(i)).y(d => y(d.y)).curve(d3.curveMonotoneX)(pts),
+    [pts]
+  );
 
   const months = (() => {
     const list = [];
@@ -415,7 +454,7 @@ function ChartModal({ stock, onClose }) {
     return list;
   })();
 
-  const pct = ((pts.at(-1).y - pts[0].y) / pts[0].y) * 100;
+  const pct = ((pts.at(-1).y - pts[0].y) / (pts[0].y || 1)) * 100;
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
@@ -427,12 +466,11 @@ function ChartModal({ stock, onClose }) {
             <Svg width={W} height={H + 30} style={{ alignSelf: "center", marginBottom: 12 }}>
               {/* grid */}
               {Array.from({ length: 5 }).map((_, i) => (
-                <Path key={i} d={`M0 ${(i + 1) * (H / 6)} H${W}`}
-                  stroke="#1e293b" strokeWidth={1} />
+                <Path key={i} d={`M0 ${(i + 1) * (H / 6)} H${W}`} stroke="#1e293b" strokeWidth={1} />
               ))}
 
               {/* line + markers */}
-              <Path d={path} stroke={COLORS.blue} strokeWidth={2} fill="none" />
+              {path && <Path d={path} stroke={COLORS.blue} strokeWidth={2} fill="none" />}
               {pts.map((p, i) => (
                 <Circle key={i} cx={x(i)} cy={y(p.y)} r={3} fill={COLORS.blue} />
               ))}
@@ -450,14 +488,7 @@ function ChartModal({ stock, onClose }) {
 
               {/* month labels */}
               {months.map((m, i) => (
-                <SvgText
-                  key={m}
-                  fill={COLORS.sub}
-                  fontSize="10"
-                  x={x(i)}
-                  y={H + 14}
-                  textAnchor="middle"
-                >
+                <SvgText key={m} fill={COLORS.sub} fontSize="10" x={x(i)} y={H + 14} textAnchor="middle">
                   {m}
                 </SvgText>
               ))}
@@ -509,7 +540,7 @@ function Row({ label, val, text, mb = 6 }) {
     <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: mb }}>
       <Text style={styles.sub}>{label}</Text>
       {val !== undefined
-        ? <Text style={styles.price}>₹{(+val).toLocaleString()}</Text>
+        ? <Text style={styles.price}>{rs(val)}</Text>
         : <Text style={styles.sub}>{text}</Text>}
     </View>
   );
@@ -547,7 +578,6 @@ const styles = StyleSheet.create({
   symSub: { color: COLORS.sub, fontSize: 11 },
   price: { color: COLORS.text, fontWeight: "600" },
   sub: { color: COLORS.sub, fontSize: 12 },
-  sub12: { color: COLORS.sub, fontSize: 12 },
   growth: { fontWeight: "700" },
 });
 

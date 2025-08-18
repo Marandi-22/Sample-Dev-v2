@@ -1,17 +1,9 @@
 import React, { useState } from "react";
-import { View, StyleSheet, KeyboardAvoidingView, Platform } from "react-native";
+import { View, StyleSheet, KeyboardAvoidingView, Platform, Alert } from "react-native";
 import { Text, TextInput, Button, HelperText, Card } from "react-native-paper";
 import { useRouter, Link } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import Constants from "expo-constants";
-
-const TOKEN_KEY = "@fw_auth_token";
-// NOTE: Do NOT set @fw_onboarded_v3 here. Let onboarding screen write it once.
-
-const API_URL =
-  Constants?.expoConfig?.extra?.API_URL ??
-  Constants?.manifest?.extra?.API_URL ??
-  "http://127.0.0.1:5000";
+import api, { API_URL, TOKEN_KEY } from "../services/api";
 
 export default function Login() {
   const router = useRouter();
@@ -25,26 +17,23 @@ export default function Login() {
     setErr("");
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+      console.log("[Login] API_URL =", API_URL);
+      const { data } = await api.post("/auth/login", {
+        email: email.trim().toLowerCase(),
+        password,
       });
+      if (!data?.token) throw new Error("No token returned");
 
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok || !body?.token) {
-        throw new Error(
-          body?.error === "invalid_credentials"
-            ? "Invalid email or password"
-            : `Login failed (${body?.error || res.status})`
-        );
-      }
+      await AsyncStorage.setItem(TOKEN_KEY, data.token);
+      // Optional legacy for older code paths:
+      // await AsyncStorage.setItem("token", data.token);
 
-      await AsyncStorage.setItem(TOKEN_KEY, body.token);
-      // 👉 Let Gate decide: if user hasn't onboarded => show onboarding; else => tabs
-      router.replace("/");
+      router.replace("/"); // _layout gate will validate
     } catch (e) {
-      setErr(e.message || "Login failed");
+      const msg = e?.response?.data?.error || e.message || "Login failed";
+      console.log("[Login] error:", msg, e?.response?.data);
+      setErr(msg === "invalid_credentials" ? "Invalid email or password" : String(msg));
+      Alert.alert("Login failed", String(setErr));
     } finally {
       setLoading(false);
     }
@@ -55,9 +44,7 @@ export default function Login() {
       <View style={styles.root}>
         <Card mode="elevated" style={styles.card}>
           <Card.Content>
-            <Text variant="headlineMedium" style={styles.title}>
-              Welcome back
-            </Text>
+            <Text variant="headlineMedium" style={styles.title}>Welcome back</Text>
             <Text style={styles.sub}>Sign in to continue</Text>
 
             <TextInput
@@ -83,18 +70,12 @@ export default function Login() {
               style={styles.input}
               outlineStyle={{ borderColor: "#1F2937" }}
               activeOutlineColor="#FF9900"
-              right={<TextInput.Icon icon={secure ? "eye-off" : "eye"} onPress={() => setSecure((s) => !s)} />}
+              right={<TextInput.Icon icon={secure ? "eye-off" : "eye"} onPress={() => setSecure(s => !s)} />}
             />
 
             {!!err && <HelperText type="error" visible>{err}</HelperText>}
 
-            <Button
-              mode="contained"
-              onPress={onSubmit}
-              loading={loading}
-              disabled={loading || !email || !password}
-              style={styles.button}
-            >
+            <Button mode="contained" onPress={onSubmit} loading={loading} disabled={loading || !email || !password} style={styles.button}>
               Login
             </Button>
 
@@ -117,19 +98,10 @@ const ORANGE = "#FF9900";
 
 const styles = StyleSheet.create({
   root: { flex: 1, justifyContent: "center", padding: 16, backgroundColor: BG },
-  card: {
-    borderRadius: 16,
-    backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: "#1F2937",
-  },
+  card: { borderRadius: 16, backgroundColor: CARD_BG, borderWidth: 1, borderColor: "#1F2937" },
   title: { color: TEXT, marginBottom: 6, fontWeight: "700" },
   sub: { color: SUBTEXT, marginBottom: 12 },
-  input: {
-    backgroundColor: "#0B0B0B",
-    color: TEXT,
-    marginVertical: 8,
-  },
+  input: { backgroundColor: "#0B0B0B", color: TEXT, marginVertical: 8 },
   button: { borderRadius: 10 },
   linkText: { color: ORANGE, textAlign: "center" },
 });

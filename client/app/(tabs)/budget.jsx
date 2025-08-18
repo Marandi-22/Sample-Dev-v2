@@ -11,7 +11,7 @@ import Speedometer from "../../components/Speedometer";
 
 /* ─── palette ─────────────────────────────────────────── */
 const BG="#000000", CARD="#111111", TEXT="#FFFFFF";
-const SUB="#9CA3AF", ACC="#00C8FF", WARN="#FF4D4D", BORDER="#1F2937";
+const SUB="#9CA3AF", ACC="#00C8FF", BORDER="#1F2937";
 
 /* ─── storage keys ────────────────────────────────────── */
 const EVENTS_KEY="@fw_life_events_v1";
@@ -25,7 +25,10 @@ const K={
 /* ─── helpers ──────────────────────────────────────────── */
 const monthBounds=d=>({ start:new Date(d.getFullYear(),d.getMonth(),1),
                         end:new Date(d.getFullYear(),d.getMonth()+1,1)});
-const inMonth=(t,s,e)=>{const x=new Date(t);return x>=s&&x<e;};
+const inMonth=(t,s,e)=>{ const x=new Date(t); return x>=s && x<e; };
+
+const n = (v, d=0) => (Number.isFinite(+v) ? +v : d);
+const fmt = (v) => Number(n(v,0)).toLocaleString("en-IN");
 
 /* ─── main component ──────────────────────────────────── */
 export default function Budget(){
@@ -37,42 +40,65 @@ export default function Budget(){
   const [goals,setGoals]           = useState([]);
 
   const loadCore=useCallback(async()=>{
-    const map=Object.fromEntries(await AsyncStorage.multiGet(Object.values(K)));
-    setSalary(+map[K.salary]||0);
-    setBase(+map[K.baseExpense]||0);
-    setSavings(+map[K.currentSavings]||0);
-    setGoals(JSON.parse(map[K.goals]||"[]"));
+    try{
+      const pairs = await AsyncStorage.multiGet(Object.values(K));
+      const map   = Object.fromEntries(pairs||[]);
+      setSalary(n(map[K.salary],0));
+      setBase(n(map[K.baseExpense],0));
+      setSavings(n(map[K.currentSavings],0));
+      const rawGoals = map[K.goals] ?? "[]";
+      const parsed = JSON.parse(rawGoals);
+      setGoals(Array.isArray(parsed)
+        ? parsed.map(g=>({ id:g.id??`g_${Date.now()}`, name:String(g.name??"Goal"), amount:n(g.amount,0) }))
+        : []);
+    }catch{
+      setSalary(0); setBase(0); setSavings(0); setGoals([]);
+    }
   },[]);
-  useEffect(()=>{loadCore();},[loadCore]);
+  useEffect(()=>{ loadCore(); },[loadCore]);
 
   /* spend events */
   const [events,setEvents] = useState([]);
   const loadEvents=useCallback(async()=>{
-    try{ setEvents(JSON.parse(await AsyncStorage.getItem(EVENTS_KEY))||[]);}catch{setEvents([]);}
+    try{
+      const raw = await AsyncStorage.getItem(EVENTS_KEY);
+      const parsed = JSON.parse(raw||"[]");
+      setEvents(Array.isArray(parsed) ? parsed.map(e=>({
+        id: e.id ?? `e_${Date.now()}`,
+        cat: e.cat ?? "Other",
+        amount: n(e.amount,0),
+        ts: e.ts ?? new Date().toISOString(),
+      })) : []);
+    }catch{ setEvents([]); }
   },[]);
-  useEffect(()=>{loadEvents();},[loadEvents]);
-  const persistEvents=list=>{ setEvents(list); AsyncStorage.setItem(EVENTS_KEY,JSON.stringify(list)); };
+  useEffect(()=>{ loadEvents(); },[loadEvents]);
+
+  const persistEvents=list=>{
+    setEvents(list);
+    AsyncStorage.setItem(EVENTS_KEY,JSON.stringify(list));
+  };
 
   /* quick-spend form */
   const CATS=["Food","Travel","Bills","Shopping","Fun","Other"];
   const [cat,setCat] = useState(CATS[0]);
   const [amt,setAmt] = useState("");
-  const addSpend=()=>{ const a=+amt; if(!a) return;
+  const addSpend=()=>{ const a=n(amt); if(!a) return;
     persistEvents([{id:`e_${Date.now()}`,cat,amount:a,ts:new Date().toISOString()},...events]);
     setAmt("");
   };
 
   /* derived numbers */
   const {start,end}=monthBounds(new Date());
-  const monthSpends=events.filter(e=>inMonth(e.ts,start,end)).reduce((s,e)=>s+e.amount,0);
-  const monthlySave=Math.max(0,salary-(baseExpense+monthSpends));
-  const speed=salary?Math.min(1,monthlySave/salary):0;
+  const monthSpends=events.filter(e=>inMonth(e.ts,start,end)).reduce((s,e)=>s+n(e.amount,0),0);
+  const monthlySave=Math.max(0, n(salary)-(n(baseExpense)+monthSpends));
+  const speed=n(salary)>0?Math.min(1,monthlySave/n(salary)):0;
 
-  const activeGoal=useMemo(()=>goals
-    .map(g=>({...g,remaining:Math.max(0,g.amount-savings)}))
+  const activeGoal=useMemo(()=> (goals||[])
+    .map(g=>({...g,remaining:Math.max(0,n(g.amount,0)-n(savings,0))}))
     .filter(g=>g.remaining>0)
-    .sort((a,b)=>a.remaining-b.remaining)[0],[goals,savings]);
-  const eta=activeGoal&&monthlySave>0?activeGoal.remaining/monthlySave:undefined;
+    .sort((a,b)=>a.remaining-b.remaining)[0] || null, [goals,savings]);
+
+  const eta = (activeGoal && monthlySave>0) ? activeGoal.remaining/monthlySave : undefined;
 
   /* manage sheet */
   const [openSheet,setOpen] = useState(false);
@@ -93,8 +119,8 @@ export default function Budget(){
             speed={speed}
             savingsPerMonth={monthlySave}
             goalName={activeGoal?.name}
-            goalAmount={activeGoal?.amount}
-            covered={Math.min(savings,activeGoal?.amount||0)}
+            goalAmount={activeGoal?.amount ?? 0}
+            covered={Math.min(n(savings,0), n(activeGoal?.amount,0))}
             etaMonths={eta}
           />
         </Card.Content></Card>
@@ -116,14 +142,14 @@ export default function Budget(){
             style={{marginTop:6}} onPress={addSpend}>Add spend</Button>
 
           <Divider style={{backgroundColor:BORDER,marginVertical:8}}/>
-          <Text style={st.sub}>This-month spends: ₹{monthSpends.toLocaleString()}</Text>
+          <Text style={st.sub}>This-month spends: ₹{fmt(monthSpends)}</Text>
 
           <Divider style={{backgroundColor:BORDER,marginVertical:8}}/>
           <ScrollView style={{maxHeight:200}} showsVerticalScrollIndicator={false}>
             {!events.length && <Text style={st.sub}>No spends yet.</Text>}
             {events.map(e=>(
               <View key={e.id} style={{marginTop:6,flexDirection:"row",justifyContent:"space-between"}}>
-                <Text style={{color:TEXT}}>₹{e.amount} · {e.cat}</Text>
+                <Text style={{color:TEXT}}>₹{fmt(e.amount)} · {e.cat}</Text>
                 <IconButton icon="delete" size={18} iconColor={ACC}
                   onPress={()=>persistEvents(events.filter(x=>x.id!==e.id))}/>
               </View>
@@ -158,17 +184,20 @@ export default function Budget(){
 
           {tab==="Numbers"&&(
             <>
-              <TextInput label="Salary (₹)" value={String(salary)} onChangeText={v=>setSalary(+v||0)}
+              <TextInput label="Salary (₹)" value={String(n(salary,0))} onChangeText={v=>setSalary(n(v,0))}
                 keyboardType="numeric" mode="outlined" style={input} outlineStyle={oStyle} activeOutlineColor={ACC}/>
-              <TextInput label="Base expense / mo (₹)" value={String(baseExpense)} onChangeText={v=>setBase(+v||0)}
+              <TextInput label="Base expense / mo (₹)" value={String(n(baseExpense,0))} onChangeText={v=>setBase(n(v,0))}
                 keyboardType="numeric" mode="outlined" style={input} outlineStyle={oStyle} activeOutlineColor={ACC}/>
-              <TextInput label="Current savings (₹)" value={String(savings)} onChangeText={v=>setSavings(+v||0)}
+              <TextInput label="Current savings (₹)" value={String(n(savings,0))} onChangeText={v=>setSavings(n(v,0))}
                 keyboardType="numeric" mode="outlined" style={input} outlineStyle={oStyle} activeOutlineColor={ACC}/>
               <Button mode="contained" buttonColor={ACC} textColor="#000" style={{marginTop:8}}
                 onPress={async()=>{
                   await AsyncStorage.multiSet([
-                    [K.salary,String(salary)],[K.baseExpense,String(baseExpense)],[K.currentSavings,String(savings)],
-                  ]); setToast("Numbers saved");
+                    [K.salary,String(n(salary,0))],
+                    [K.baseExpense,String(n(baseExpense,0))],
+                    [K.currentSavings,String(n(savings,0))],
+                  ]);
+                  setToast("Numbers saved");
                 }}>Save</Button>
             </>
           )}
@@ -189,9 +218,11 @@ export default function Budget(){
 
 /* ─── GoalsEditor ─────────────────────────────────────── */
 function GoalsEditor({ goals,onChange }){
-  const [items,setItems]   = useState(goals);
+  const [items,setItems]   = useState(goals||[]);
   const [name,setName]     = useState("");
   const [amt,setAmt]       = useState("");
+
+  useEffect(()=>{ setItems(goals||[]); },[goals]);
 
   return(
     <>
@@ -200,19 +231,19 @@ function GoalsEditor({ goals,onChange }){
       <TextInput label="Amount (₹)" value={amt} onChangeText={setAmt}
         keyboardType="numeric" mode="outlined" style={input} outlineStyle={oStyle} activeOutlineColor={ACC}/>
       <Button mode="contained" buttonColor={ACC} textColor="#000"
-        onPress={()=>{ if(!name||!amt) return;
-          const n=[...items,{id:`g_${Date.now()}`,name,amount:+amt}];
-          setItems(n); onChange(n); setName(""); setAmt("");
+        onPress={()=>{ const A=n(amt,0); if(!name||!A) return;
+          const nList=[...(items||[]),{id:`g_${Date.now()}`,name,amount:A}];
+          setItems(nList); onChange(nList); setName(""); setAmt("");
         }}>Add</Button>
 
       <Divider style={{backgroundColor:BORDER,marginVertical:8}}/>
       <ScrollView style={{maxHeight:220}} showsVerticalScrollIndicator={false}>
-        {!items.length&&<Text style={st.sub}>No goals yet.</Text>}
-        {items.map(g=>(
+        {!(items&&items.length) && <Text style={st.sub}>No goals yet.</Text>}
+        {(items||[]).map(g=>(
           <View key={g.id} style={{flexDirection:"row",justifyContent:"space-between",marginTop:6}}>
-            <Text style={{color:TEXT}}>• {g.name} · ₹{g.amount.toLocaleString()}</Text>
+            <Text style={{color:TEXT}}>• {g.name} · ₹{fmt(g.amount)}</Text>
             <IconButton icon="delete" size={18} iconColor={ACC}
-              onPress={()=>{ const n=items.filter(x=>x.id!==g.id); setItems(n); onChange(n); }}/>
+              onPress={()=>{ const nList=(items||[]).filter(x=>x.id!==g.id); setItems(nList); onChange(nList); }}/>
           </View>
         ))}
       </ScrollView>
@@ -224,21 +255,35 @@ function GoalsEditor({ goals,onChange }){
 function CalculatorCard(){
   const MODES=["EMI","SIP","Tax"];
   const [mode,setMode] = useState("EMI");
-  const [p,setP] = useState(""), [r,setR] = useState(""), [n,setN] = useState("");
+  const [p,setP] = useState(""), [r,setR] = useState(""), [nY,setNY] = useState("");
 
   const res=useMemo(()=>{
-    const P=+p,R=+r,N=+n;if(!P||!N||(mode!=="Tax"&&!R))return null;
-    if(mode==="EMI"){const mr=R/12/100,emi=P*mr*Math.pow(1+mr,N)/(Math.pow(1+mr,N)-1);return `₹${emi.toFixed(0)} / month`;}
-    if(mode==="SIP"){const mr=R/12/100,fv=P*((Math.pow(1+mr,N*12)-1)*(1+mr))/mr;return `₹${fv.toLocaleString()}`;}
-    if(mode==="Tax"){const inc=P;let t=0;if(inc>250000)t+=Math.min(inc-250000,250000)*.05;if(inc>500000)t+=Math.min(inc-500000,500000)*.2;if(inc>1000000)t+=(inc-1000000)*.3;return `Estimated tax: ₹${t.toLocaleString()}`;}
-  },[mode,p,r,n]);
+    const P=n(p),R=n(r),N=n(nY); if(!P||!N||(mode!=="Tax"&&!R))return null;
+    if(mode==="EMI"){
+      const mr=R/12/100;
+      const emi=P*mr*Math.pow(1+mr,N)/(Math.pow(1+mr,N)-1);
+      return `₹${fmt(Math.round(emi))} / month`;
+    }
+    if(mode==="SIP"){
+      const mr=R/12/100;
+      const fv=P*((Math.pow(1+mr,N*12)-1)*(1+mr))/mr;
+      return `₹${fmt(fv)}`;
+    }
+    if(mode==="Tax"){
+      const inc=P; let t=0;
+      if(inc>250000)t+=Math.min(inc-250000,250000)*.05;
+      if(inc>500000)t+=Math.min(inc-500000,500000)*.2;
+      if(inc>1000000)t+=(inc-1000000)*.3;
+      return `Estimated tax: ₹${fmt(t)}`;
+    }
+  },[mode,p,r,nY]);
 
   return(
     <Card style={st.card}><Card.Content>
       <Text style={st.h}>Calculator</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginVertical:6}}>
         {MODES.map(m=>(
-          <Chip key={m} selected={mode===m} onPress={()=>{setMode(m);setP("");setR("");setN("");}}
+          <Chip key={m} selected={mode===m} onPress={()=>{setMode(m);setP("");setR("");setNY("");}}
             style={chip} selectedColor={ACC} mode="outlined">{m}</Chip>
         ))}
       </ScrollView>
@@ -248,7 +293,7 @@ function CalculatorCard(){
         <TextInput label="Rate (% p.a.)" value={r} onChangeText={setR}
           keyboardType="numeric" mode="outlined" style={input} outlineStyle={oStyle} activeOutlineColor={ACC}/>
       )}
-      <TextInput label={mode==="EMI"?"Tenure (months)":"Tenure (years)"} value={n} onChangeText={setN}
+      <TextInput label={mode==="EMI"?"Tenure (months)":"Tenure (years)"} value={nY} onChangeText={setNY}
         keyboardType="numeric" mode="outlined" style={input} outlineStyle={oStyle} activeOutlineColor={ACC}/>
       {res&&<Text style={{color:TEXT,fontWeight:"700",marginTop:8}}>{res}</Text>}
     </Card.Content></Card>

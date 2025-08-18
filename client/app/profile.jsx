@@ -1,175 +1,107 @@
 // client/app/profile.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { StyleSheet, View, ScrollView, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   Text,
   Card,
   TextInput,
-  Switch,
   Button,
   Chip,
   ActivityIndicator,
   IconButton,
   Divider,
+  Snackbar,
 } from "react-native-paper";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import Constants from "expo-constants";
+import { API_URL, TOKEN_KEY } from "../services/api";
 
-const TOKEN_KEY = "@fw_auth_token";
-const ONBOARD_KEY = "@fw_onboarded_v3";
-const PROFILE_KEY = "@fw_profile_v3"; // legacy prefs blob
+/* ─── palette ─────────────────────────────────────────── */
+const BG = "#000000",
+  CARD_BG = "#111111",
+  TEXT = "#FFFFFF";
+const SUBTEXT = "#9CA3AF",
+  ACCENT = "#00C8FF",
+  BORDER = "#1F2937";
 
-// NEW budget (Life Ribbon) keys — must match budget.jsx
+/* ─── storage keys (match budget.jsx exactly) ─────────── */
+const EVENTS_KEY = "@fw_life_events_v1";
 const K = {
-  age: "@fw_life_age",
-  income: "@fw_life_income",
-  savings: "@fw_life_savings",
-  spendAuto: "@fw_life_spend",
-  goal: "@fw_life_goal",
-  autopilot: "@fw_life_autopilot",
-  expectancy: "@fw_life_expectancy",
+  salary: "@fw_salary",
+  baseExpense: "@fw_base_expense",
+  currentSavings: "@fw_current_savings",
   goals: "@fw_goals_v1",
 };
 
-const API_URL =
-  Constants?.expoConfig?.extra?.API_URL ??
-  Constants?.manifest?.extra?.API_URL ??
-  "http://127.0.0.1:5000";
-
-// tiny helpers
-const n = (v) => (v === null || v === undefined || v === "" ? "" : String(v));
+/* ─── tiny helpers ────────────────────────────────────── */
+const toStr = (v) => (v === null || v === undefined ? "" : String(v));
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
 
-  // server account
+  const [loading, setLoading] = useState(true);
   const [account, setAccount] = useState(null); // { id, name, email }
 
-  // legacy
-  const [legacyOpen, setLegacyOpen] = useState(false);
-  const [legacy, setLegacy] = useState({}); // { monthlyIncome, fixedBills, savingsPercent, monthlyInvest, goal, ... }
+  // Core numbers used by Speedometer/Budget
+  const [salary, setSalary] = useState("");
+  const [baseExpense, setBaseExpense] = useState("");
+  const [currentSavings, setCurrentSavings] = useState("");
 
-  // life ribbon (the one budget uses)
-  const [lr, setLR] = useState({
-    age: "",
-    income: "",
-    savings: "",
-    spendAuto: "",
-    autopilot: "",
-    expectancy: "80",
-  });
+  // Goals list used by Budget
+  const [goals, setGoals] = useState([]);
 
-  // misc prefs kept in legacy blob
-  const [remindersEnabled, setRemindersEnabled] = useState(false);
-  const [currency, setCurrency] = useState("₹");
+  // UI
+  const [toast, setToast] = useState("");
 
-  useEffect(() => {
-    (async () => {
+  const loadAll = useCallback(async () => {
+    try {
+      // Load core numbers
+      const map = Object.fromEntries(await AsyncStorage.multiGet(Object.values(K)));
+      setSalary(toStr(map[K.salary] || ""));
+      setBaseExpense(toStr(map[K.baseExpense] || ""));
+      setCurrentSavings(toStr(map[K.currentSavings] || ""));
       try {
-        const token = await AsyncStorage.getItem(TOKEN_KEY);
-
-        // load legacy blob (if any)
-        const rawLegacy = await AsyncStorage.getItem(PROFILE_KEY);
-        const L = rawLegacy ? JSON.parse(rawLegacy) : {};
-        setLegacy(L || {});
-        setRemindersEnabled(!!L?.remindersEnabled);
-        setCurrency(L?.currency || "₹");
-
-        // load life ribbon keys
-        const pairs = await AsyncStorage.multiGet([
-          K.age,
-          K.income,
-          K.savings,
-          K.spendAuto,
-          K.autopilot,
-          K.expectancy,
-        ]);
-        const map = Object.fromEntries(pairs || []);
-        setLR({
-          age: n(map[K.age] ?? ""),
-          income: n(map[K.income] ?? ""),
-          savings: n(map[K.savings] ?? ""),
-          spendAuto: n(map[K.spendAuto] ?? ""),
-          autopilot: n(map[K.autopilot] ?? ""),
-          expectancy: n(map[K.expectancy] ?? "80"),
-        });
-
-        // server account (optional)
-        if (token) {
-          try {
-            const res = await fetch(`${API_URL}/auth/me`, {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            if (res.ok) setAccount(await res.json());
-            else await AsyncStorage.removeItem(TOKEN_KEY);
-          } catch {
-            // offline ok
-          }
-        }
-      } finally {
-        setLoading(false);
+        setGoals(JSON.parse(map[K.goals] || "[]"));
+      } catch {
+        setGoals([]);
       }
-    })();
+
+      // Load server account using token
+      const token = await AsyncStorage.getItem(TOKEN_KEY);
+      if (token) {
+        try {
+          const res = await fetch(`${API_URL}/auth/me`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.ok) setAccount(await res.json());
+          else await AsyncStorage.removeItem(TOKEN_KEY);
+        } catch {
+          // offline ok
+        }
+      }
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const updateLR = (k, v) => setLR((p) => ({ ...p, [k]: v }));
-  const updateLegacy = (k, v) => setLegacy((p) => ({ ...(p || {}), [k]: v }));
+  useEffect(() => {
+    loadAll();
+  }, [loadAll]);
 
-  // Save life ribbon keys (used by Budget)
-  const saveLifeRibbon = async () => {
+  const saveCore = async () => {
     await AsyncStorage.multiSet([
-      [K.age, lr.age || ""],
-      [K.income, lr.income || ""],
-      [K.savings, lr.savings || ""],
-      [K.spendAuto, lr.spendAuto || ""],
-      [K.autopilot, lr.autopilot || ""],
-      [K.expectancy, lr.expectancy || "80"],
-      [ONBOARD_KEY, "true"],
+      [K.salary, salary || "0"],
+      [K.baseExpense, baseExpense || "0"],
+      [K.currentSavings, currentSavings || "0"],
     ]);
-    Alert.alert("Saved", "Life Ribbon settings updated.");
+    setToast("Numbers saved");
   };
 
-  // Save legacy blob (kept for your other screens, if any)
-  const saveLegacy = async () => {
-    const blob = {
-      ...(legacy || {}),
-      remindersEnabled,
-      currency,
-    };
-    await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(blob));
-    await AsyncStorage.setItem(ONBOARD_KEY, "true");
-    Alert.alert("Saved", "Profile (legacy) updated.");
-  };
-
-  // One-click sync: Legacy -> Life Ribbon
-  const syncFromLegacy = async () => {
-    const L = legacy || {};
-    const income = Number(L.monthlyIncome || 0);
-    const fixedBills = Number(L.fixedBills || 0);
-    const p = Number(L.savingsPercent || 0);
-    const monthlyInvest =
-      L.goal === "invest"
-        ? Number(L.monthlyInvest || 0)
-        : Math.max(0, Math.round((income * p) / 100));
-
-    const next = {
-      ...lr,
-      income: income ? String(income) : lr.income,
-      spendAuto: fixedBills ? String(fixedBills) : lr.spendAuto,
-      autopilot: String(monthlyInvest || lr.autopilot || ""),
-    };
-    setLR(next);
-
-    await AsyncStorage.multiSet([
-      [K.income, next.income || ""],
-      [K.spendAuto, next.spendAuto || ""],
-      [K.autopilot, next.autopilot || ""],
-      [ONBOARD_KEY, "true"],
-    ]);
-    Alert.alert("Synced", "Copied legacy income/spend to Life Ribbon.");
+  const saveGoals = async (next) => {
+    setGoals(next);
+    await AsyncStorage.setItem(K.goals, JSON.stringify(next));
+    setToast("Goals updated");
   };
 
   const logout = async () => {
@@ -180,16 +112,15 @@ export default function ProfileScreen() {
   const logoutAndWipe = async () => {
     await AsyncStorage.multiRemove([
       TOKEN_KEY,
-      PROFILE_KEY,
-      ONBOARD_KEY,
-      K.age,
-      K.income,
-      K.savings,
-      K.spendAuto,
-      K.autopilot,
-      K.expectancy,
+      EVENTS_KEY,
+      K.salary,
+      K.baseExpense,
+      K.currentSavings,
+      K.goals,
+      "@fw_profile_v3",
       "@fw_profile_v2",
       "@fw_profile_v1",
+      "@fw_onboarded_v3",
       "@fw_onboarded_v2",
       "@fw_onboarded_v1",
     ]);
@@ -200,7 +131,7 @@ export default function ProfileScreen() {
     return (
       <SafeAreaView style={styles.center}>
         <ActivityIndicator />
-        <Text style={{ color: "#9CA3AF", marginTop: 8 }}>Loading…</Text>
+        <Text style={{ color: SUBTEXT, marginTop: 8 }}>Loading…</Text>
       </SafeAreaView>
     );
   }
@@ -208,16 +139,24 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 120 }}>
-        <Text variant="headlineLarge" style={styles.title}>Profile</Text>
+        <Text variant="headlineLarge" style={styles.title}>
+          Profile
+        </Text>
 
         {/* Account */}
         <Card style={styles.card}>
           <Card.Content>
-            <Text variant="titleMedium" style={styles.label}>Account</Text>
+            <Text variant="titleMedium" style={styles.label}>
+              Account
+            </Text>
             {account ? (
               <>
-                <Text style={styles.muted}>Name: <Text style={styles.value}>{account.name}</Text></Text>
-                <Text style={styles.muted}>Email: <Text style={styles.value}>{account.email}</Text></Text>
+                <Text style={styles.muted}>
+                  Name: <Text style={styles.value}>{account.name}</Text>
+                </Text>
+                <Text style={styles.muted}>
+                  Email: <Text style={styles.value}>{account.email}</Text>
+                </Text>
               </>
             ) : (
               <Text style={styles.muted}>Signed out</Text>
@@ -225,162 +164,215 @@ export default function ProfileScreen() {
           </Card.Content>
         </Card>
 
-        {/* LIFE RIBBON (Budget) SETTINGS — the source of truth for Budget tab */}
+        {/* Core Numbers (used by Speedometer/Budget) */}
         <Card style={styles.card}>
           <Card.Content>
-            <View style={styles.rowBetween}>
-              <Text variant="titleMedium" style={styles.label}>Life Ribbon Settings</Text>
-              <Button compact mode="text" onPress={() => router.push("/onboarding")}>
-                Onboarding
-              </Button>
-            </View>
+            <Text variant="titleMedium" style={styles.label}>
+              Core Numbers
+            </Text>
             <Text style={styles.muted}>
-              These values are used by the <Text style={styles.value}>Budget</Text> tab (Life Ribbon).
+              These drive your Speedometer and Budget calculations.
             </Text>
 
             <TextInput
-              label="Current age"
-              value={lr.age}
-              onChangeText={(t) => updateLR("age", t)}
+              label="Salary / month (₹)"
+              value={salary}
+              onChangeText={setSalary}
               keyboardType="numeric"
+              mode="outlined"
               style={styles.input}
+              outlineStyle={styles.outline}
+              activeOutlineColor={ACCENT}
             />
             <TextInput
-              label="Monthly income (₹)"
-              value={lr.income}
-              onChangeText={(t) => updateLR("income", t)}
+              label="Base expense / month (₹)"
+              value={baseExpense}
+              onChangeText={setBaseExpense}
               keyboardType="numeric"
+              mode="outlined"
               style={styles.input}
+              outlineStyle={styles.outline}
+              activeOutlineColor={ACCENT}
             />
             <TextInput
               label="Current savings (₹)"
-              value={lr.savings}
-              onChangeText={(t) => updateLR("savings", t)}
+              value={currentSavings}
+              onChangeText={setCurrentSavings}
               keyboardType="numeric"
+              mode="outlined"
               style={styles.input}
-            />
-            <TextInput
-              label="Autopilot invest / month (₹)"
-              value={lr.autopilot}
-              onChangeText={(t) => updateLR("autopilot", t)}
-              keyboardType="numeric"
-              style={styles.input}
-            />
-            <TextInput
-              label="Usual monthly spend (₹)"
-              value={lr.spendAuto}
-              onChangeText={(t) => updateLR("spendAuto", t)}
-              keyboardType="numeric"
-              style={styles.input}
-            />
-            <TextInput
-              label="Life expectancy (years)"
-              value={lr.expectancy}
-              onChangeText={(t) => updateLR("expectancy", t)}
-              keyboardType="numeric"
-              style={styles.input}
+              outlineStyle={styles.outline}
+              activeOutlineColor={ACCENT}
             />
 
-            <View style={styles.rowBetween}>
-              <Button mode="contained" onPress={saveLifeRibbon}>Save Life Ribbon</Button>
-              <Button mode="outlined" onPress={syncFromLegacy}>Sync from Legacy</Button>
-            </View>
+            <Button
+              mode="contained"
+              buttonColor={ACCENT}
+              textColor="#000"
+              onPress={saveCore}
+              style={{ marginTop: 8 }}
+            >
+              Save
+            </Button>
           </Card.Content>
         </Card>
 
-        {/* LEGACY PROFILE (optional) — collapsed by default */}
+        {/* Goals (used by Budget) */}
         <Card style={styles.card}>
           <Card.Content>
             <View style={styles.rowBetween}>
-              <Text variant="titleMedium" style={styles.label}>Legacy Profile (optional)</Text>
-              <IconButton
-                icon={legacyOpen ? "chevron-up" : "chevron-down"}
-                onPress={() => setLegacyOpen((o) => !o)}
-              />
+              <Text variant="titleMedium" style={styles.label}>
+                Goals
+              </Text>
+              {goals.length > 0 && (
+                <Button
+                  mode="text"
+                  textColor={ACCENT}
+                  onPress={() => saveGoals([])}
+                >
+                  Clear all
+                </Button>
+              )}
             </View>
 
-            {!legacyOpen ? (
-              <Text style={styles.muted}>
-                Keep for older screens; Budget uses Life Ribbon above.
-              </Text>
-            ) : (
-              <>
-                <TextInput
-                  label={`Monthly Income (${currency})`}
-                  value={n(legacy.monthlyIncome)}
-                  onChangeText={(t) => updateLegacy("monthlyIncome", t)}
-                  keyboardType="numeric"
-                  style={styles.input}
-                />
-                <TextInput
-                  label={`Fixed Bills (${currency})`}
-                  value={n(legacy.fixedBills)}
-                  onChangeText={(t) => updateLegacy("fixedBills", t)}
-                  keyboardType="numeric"
-                  style={styles.input}
-                />
-                <TextInput
-                  label="Savings Goal (%)"
-                  value={n(legacy.savingsPercent ?? 20)}
-                  onChangeText={(t) => updateLegacy("savingsPercent", Number(t) || 0)}
-                  keyboardType="numeric"
-                  style={styles.input}
-                />
-                <TextInput
-                  label="Invest / month (if goal = invest)"
-                  value={n(legacy.monthlyInvest)}
-                  onChangeText={(t) => updateLegacy("monthlyInvest", t)}
-                  keyboardType="numeric"
-                  style={styles.input}
-                />
-
-                <View style={styles.rowBetween}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                    <Text style={styles.value}>Enable Reminders</Text>
-                    <Switch
-                      value={remindersEnabled}
-                      onValueChange={(v) => setRemindersEnabled(v)}
-                    />
-                  </View>
-                  <Chip>{currency}</Chip>
-                </View>
-
-                <Divider style={{ backgroundColor: "#232323", marginVertical: 10 }} />
-                <Button mode="contained" onPress={saveLegacy}>Save Legacy</Button>
-              </>
-            )}
+            <GoalsEditor goals={goals} onChange={saveGoals} />
           </Card.Content>
         </Card>
 
         {/* Danger zone */}
         <Card style={styles.cardDanger}>
           <Card.Content>
-            <Text variant="titleMedium" style={styles.labelDanger}>Danger Zone</Text>
+            <Text variant="titleMedium" style={styles.labelDanger}>
+              Danger Zone
+            </Text>
             <View style={{ flexDirection: "row", gap: 10 }}>
-              <Button mode="contained" onPress={logout}>Log out</Button>
-              <Button mode="outlined" onPress={logoutAndWipe}>Log out & wipe</Button>
+              <Button mode="contained" onPress={logout}>
+                Log out
+              </Button>
+              <Button mode="outlined" onPress={logoutAndWipe}>
+                Log out & wipe
+              </Button>
             </View>
           </Card.Content>
         </Card>
       </ScrollView>
+
+      <Snackbar
+        visible={!!toast}
+        onDismiss={() => setToast("")}
+        duration={1600}
+        style={{ backgroundColor: "#0F0F0F" }}
+      >
+        <Text style={{ color: TEXT }}>{toast}</Text>
+      </Snackbar>
     </SafeAreaView>
   );
 }
 
+/* ─── Goals editor (same schema Budget expects) ───────── */
+function GoalsEditor({ goals, onChange }) {
+  const [items, setItems] = useState(goals || []);
+  const [name, setName] = useState("");
+  const [amt, setAmt] = useState("");
+
+  const add = () => {
+    const a = +amt;
+    if (!name.trim() || !a) return;
+    const next = [...items, { id: `g_${Date.now()}`, name: name.trim(), amount: a }];
+    setItems(next);
+    onChange(next);
+    setName("");
+    setAmt("");
+  };
+
+  const remove = (id) => {
+    const next = items.filter((x) => x.id !== id);
+    setItems(next);
+    onChange(next);
+  };
+
+  return (
+    <>
+      <TextInput
+        label="Goal name"
+        value={name}
+        onChangeText={setName}
+        mode="outlined"
+        style={styles.input}
+        outlineStyle={styles.outline}
+        activeOutlineColor={ACCENT}
+      />
+      <TextInput
+        label="Amount (₹)"
+        value={amt}
+        onChangeText={setAmt}
+        keyboardType="numeric"
+        mode="outlined"
+        style={styles.input}
+        outlineStyle={styles.outline}
+        activeOutlineColor={ACCENT}
+      />
+      <Button
+        mode="contained"
+        buttonColor={ACCENT}
+        textColor="#000"
+        onPress={add}
+      >
+        Add goal
+      </Button>
+
+      <Divider style={{ backgroundColor: BORDER, marginVertical: 10 }} />
+      <ScrollView style={{ maxHeight: 220 }} showsVerticalScrollIndicator={false}>
+        {!items.length && <Text style={styles.muted}>No goals yet.</Text>}
+        {items.map((g) => (
+          <View
+            key={g.id}
+            style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 6 }}
+          >
+            <Text style={{ color: TEXT }}>
+              • {g.name} · ₹{Number(g.amount || 0).toLocaleString()}
+            </Text>
+            <IconButton
+              icon="delete"
+              size={18}
+              iconColor={ACCENT}
+              onPress={() => remove(g.id)}
+            />
+          </View>
+        ))}
+      </ScrollView>
+    </>
+  );
+}
+
+/* ─── styles ──────────────────────────────────────────── */
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#000" },
-  center: { flex: 1, backgroundColor: "#000", alignItems: "center", justifyContent: "center" },
-  title: { color: "#fff", marginBottom: 12, fontWeight: "800" },
+  container: { flex: 1, backgroundColor: BG },
+  center: { flex: 1, backgroundColor: BG, alignItems: "center", justifyContent: "center" },
+  title: { color: TEXT, marginBottom: 12, fontWeight: "800" },
 
-  card: { backgroundColor: "#111", marginBottom: 12, borderRadius: 16, borderWidth: 1, borderColor: "#1F2937" },
-  cardDanger: { backgroundColor: "#1a0f0f", marginBottom: 12, borderRadius: 16, borderWidth: 1, borderColor: "#5a1f1f" },
+  card: {
+    backgroundColor: CARD_BG,
+    marginBottom: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  cardDanger: {
+    backgroundColor: "#1a0f0f",
+    marginBottom: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#5a1f1f",
+  },
 
-  label: { color: "#fff", marginBottom: 8, fontWeight: "700" },
+  label: { color: TEXT, marginBottom: 8, fontWeight: "700" },
   labelDanger: { color: "#ff6666", marginBottom: 8, fontWeight: "700" },
 
-  input: { backgroundColor: "#0f0f0f", marginBottom: 10 },
+  input: { backgroundColor: "#0f0f0f", marginTop: 8 },
+  outline: { borderColor: BORDER },
   rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
 
-  muted: { color: "#9CA3AF", marginTop: 4 },
-  value: { color: "#FFFFFF" },
+  muted: { color: SUBTEXT, marginTop: 4 },
+  value: { color: TEXT },
 });

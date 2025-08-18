@@ -18,7 +18,8 @@ import { useNavigation } from "@react-navigation/native";
 const IMG = {
   quizHero : require("../../assets/thumbnails/quiz-hero.png"),
   bankGame : require("../../assets/thumbnails/bank-placeholder.png"),
-  stock    : require("../../assets/thumbnails/stock-market.png"),   // 🆕
+  stock    : require("../../assets/thumbnails/stock-market.png"),
+  tycoon   : require("../../assets/thumbnails/Bussiness-game.png"), // 🆕
   kyc      : require("../../assets/thumbnails/sim-kyc.png"),
   job      : require("../../assets/thumbnails/sim-job.png"),
   upi      : require("../../assets/thumbnails/sim-upi.png"),
@@ -26,7 +27,8 @@ const IMG = {
 
 /* ---------- overlays ---------- */
 import BankGame          from "../../components/games/bank";
-import StockExchange     from "../../components/games/StockExchange";   // 🆕
+import StockExchange     from "../../components/games/StockExchange";
+import TycoonTycoon      from "../../components/games/TycoonTycoon";   // 🆕
 import JobStorySimulator from "../../components/scam/job-scam/JobStorySimulator";
 import KYCStorySimulator from "../../components/scam/kyc-scam/KYCStorySimulator";
 import UPIStorySimulator from "../../components/scam/upi-scam/UPIStorySimulator";
@@ -35,8 +37,8 @@ import KBCQuiz           from "../../components/quiz/KBCQuiz";
 export default function Play() {
   const navigation = useNavigation();
 
-  /* overlay state
-     'quiz' | 'bank' | 'stock' | 'kyc' | 'job' | 'upi' | null  */
+  /* overlay state:
+     'quiz' | 'bank' | 'stock' | 'tycoon' | 'kyc' | 'job' | 'upi' | null  */
   const [overlay, setOverlay] = React.useState(null);
 
   /* hide tab-bar while an overlay is visible */
@@ -64,7 +66,8 @@ export default function Play() {
   /* ----------- overlay router ----------- */
   if (overlay === "quiz")   return <KBCQuiz           onExit={() => setOverlay(null)} />;
   if (overlay === "bank")   return <BankGame          onExit={() => setOverlay(null)} />;
-  if (overlay === "stock")  return <StockExchange     onExit={() => setOverlay(null)} />; // 🆕
+  if (overlay === "stock")  return <StockExchange     onExit={() => setOverlay(null)} />;
+  if (overlay === "tycoon") return <TycoonTycoon      onExit={() => setOverlay(null)} />; // 🆕
   if (overlay === "job")    return <JobStorySimulator onExit={() => setOverlay(null)} />;
   if (overlay === "kyc")    return <KYCStorySimulator onExit={() => setOverlay(null)} />;
   if (overlay === "upi")    return <UPIStorySimulator onExit={() => setOverlay(null)} />;
@@ -80,18 +83,26 @@ export default function Play() {
       plays: "12k",
     },
     {
-      id   : "stock",                          // 🆕
+      id   : "stock",
       title: "Stock Exchange",
       desc : "Buy & sell virtual shares, build wealth.",
       img  : IMG.stock,
       likes: "2.3k",
       plays: "91k",
     },
+    {
+      id   : "tycoon",                             // 🆕
+      title: "💸 Business Logic",
+      desc : "Tap, hire overseers & build an empire.",
+      img  : IMG.tycoon,
+      likes: "1.1k",
+      plays: "45k",
+    },
   ];
 
   const simulators = [
     { id:"kyc", title:"KYC Scam", desc:"Fake KYC expiry prompts that hijack your device.", img:IMG.kyc, likes:"1.2k", plays:"52k" },
-    { id:"job", title:"Job Scam", desc:"Too-good offers that ask for ‘training fees’.",     img:IMG.job, likes:"980",  plays:"38k" },
+    { id:"job", title:"Job Scam", desc:"Too-good offers that ask for ‘training fees’.",     img:IMG.job, likes:"980", plays:"38k" },
     { id:"upi", title:"UPI QR Scam", desc:"They send a QR; you lose ₹ on scan.",            img:IMG.upi, likes:"1.6k", plays:"75k" },
   ];
 
@@ -143,8 +154,12 @@ const Section = ({ title, items, onPress }) => (
     </View>
     <View style={styles.list}>
       {items.map((c) => (
-        <TouchableOpacity key={c.id} activeOpacity={0.9} style={styles.listItem}
-          onPress={() => onPress(c.id)}>
+        <TouchableOpacity
+          key={c.id}
+          activeOpacity={0.9}
+          style={styles.listItem}
+          onPress={() => onPress(c.id)}
+        >
           <Image source={c.img} style={styles.thumb} />
           <CardBody card={c} />
         </TouchableOpacity>
