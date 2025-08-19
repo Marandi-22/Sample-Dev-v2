@@ -25,7 +25,7 @@ export default function Speedometer({
   const px  = cx + r * Math.cos(a), py = cy + r * Math.sin(a);
 
   const pctLabel = savingsPerMonth <= 0
-    ? "Speed: 0% (no monthly savings)"
+    ? "Speed: 0% (No Savings)"
     : `Speed: ${(s * 100).toFixed(0)}%`;
 
   /* mini-map */

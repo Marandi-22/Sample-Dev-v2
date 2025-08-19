@@ -17,7 +17,8 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "usesCleartextTraffic": true
+      "usesCleartextTraffic": true,
+      "package": "com.r3wind.client"
     },
     "web": {
       "bundler": "metro",
@@ -41,7 +42,11 @@
       "typedRoutes": true
     },
     "extra": {
-      "API_URL": "http://10.0.2.2:5000"
+      "API_URL": "https://tycoon-api-jzoi.onrender.com",
+      "router": {},
+      "eas": {
+        "projectId": "6ee9d324-d1b3-4567-90d0-99db1ca6c510"
+      }
     }
   }
 }

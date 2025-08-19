@@ -36,7 +36,7 @@ export default function TabsLayout() {
           return {
             headerShown: false,
             tabBarShowLabel: true,
-            tabBarActiveTintColor: "#FF9900",
+            tabBarActiveTintColor: "#00C8FF",
             tabBarInactiveTintColor: "#9CA3AF",
             sceneContainerStyle: { backgroundColor: "#000000" },
             tabBarStyle: hide ? [{ ...baseTabBarStyle }, { display: "none" }] : baseTabBarStyle,

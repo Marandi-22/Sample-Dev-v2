@@ -19,7 +19,8 @@ const IMG = {
   quizHero : require("../../assets/thumbnails/quiz-hero.png"),
   bankGame : require("../../assets/thumbnails/bank-placeholder.png"),
   stock    : require("../../assets/thumbnails/stock-market.png"),
-  tycoon   : require("../../assets/thumbnails/Bussiness-game.png"), // 🆕
+  tycoon   : require("../../assets/thumbnails/Bussiness-game.png"),
+  phish    : require("../../assets/thumbnails/Phising-buster.png"),   // 🆕
   kyc      : require("../../assets/thumbnails/sim-kyc.png"),
   job      : require("../../assets/thumbnails/sim-job.png"),
   upi      : require("../../assets/thumbnails/sim-upi.png"),
@@ -28,7 +29,8 @@ const IMG = {
 /* ---------- overlays ---------- */
 import BankGame          from "../../components/games/bank";
 import StockExchange     from "../../components/games/StockExchange";
-import TycoonTycoon      from "../../components/games/TycoonTycoon";   // 🆕
+import TycoonTycoon      from "../../components/games/TycoonTycoon";
+import PhishBuster       from "../../components/games/PhishBuster";     // 🆕
 import JobStorySimulator from "../../components/scam/job-scam/JobStorySimulator";
 import KYCStorySimulator from "../../components/scam/kyc-scam/KYCStorySimulator";
 import UPIStorySimulator from "../../components/scam/upi-scam/UPIStorySimulator";
@@ -38,7 +40,7 @@ export default function Play() {
   const navigation = useNavigation();
 
   /* overlay state:
-     'quiz' | 'bank' | 'stock' | 'tycoon' | 'kyc' | 'job' | 'upi' | null  */
+     'quiz' | 'bank' | 'stock' | 'tycoon' | 'phish' | 'kyc' | 'job' | 'upi' | null */
   const [overlay, setOverlay] = React.useState(null);
 
   /* hide tab-bar while an overlay is visible */
@@ -67,7 +69,8 @@ export default function Play() {
   if (overlay === "quiz")   return <KBCQuiz           onExit={() => setOverlay(null)} />;
   if (overlay === "bank")   return <BankGame          onExit={() => setOverlay(null)} />;
   if (overlay === "stock")  return <StockExchange     onExit={() => setOverlay(null)} />;
-  if (overlay === "tycoon") return <TycoonTycoon      onExit={() => setOverlay(null)} />; // 🆕
+  if (overlay === "tycoon") return <TycoonTycoon      onExit={() => setOverlay(null)} />;
+  if (overlay === "phish")  return <PhishBuster       onExit={() => setOverlay(null)} />; // 🆕
   if (overlay === "job")    return <JobStorySimulator onExit={() => setOverlay(null)} />;
   if (overlay === "kyc")    return <KYCStorySimulator onExit={() => setOverlay(null)} />;
   if (overlay === "upi")    return <UPIStorySimulator onExit={() => setOverlay(null)} />;
@@ -83,6 +86,14 @@ export default function Play() {
       plays: "12k",
     },
     {
+      id   : "phish",                           // 🆕
+      title: "Phish Buster",
+      desc : "Spot the scams, protect your inbox.",
+      img  : IMG.phish,
+      likes: "850",
+      plays: "27k",
+    },
+    {
       id   : "stock",
       title: "Stock Exchange",
       desc : "Buy & sell virtual shares, build wealth.",
@@ -91,7 +102,7 @@ export default function Play() {
       plays: "91k",
     },
     {
-      id   : "tycoon",                             // 🆕
+      id   : "tycoon",
       title: "💸 Business Logic",
       desc : "Tap, hire overseers & build an empire.",
       img  : IMG.tycoon,
@@ -101,15 +112,18 @@ export default function Play() {
   ];
 
   const simulators = [
-    { id:"kyc", title:"KYC Scam", desc:"Fake KYC expiry prompts that hijack your device.", img:IMG.kyc, likes:"1.2k", plays:"52k" },
-    { id:"job", title:"Job Scam", desc:"Too-good offers that ask for ‘training fees’.",     img:IMG.job, likes:"980", plays:"38k" },
-    { id:"upi", title:"UPI QR Scam", desc:"They send a QR; you lose ₹ on scan.",            img:IMG.upi, likes:"1.6k", plays:"75k" },
+    { id:"kyc",  title:"KYC Scam",     desc:"Fake KYC expiry prompts that hijack your device.", img:IMG.kyc, likes:"1.2k", plays:"52k" },
+    { id:"job",  title:"Job Scam",     desc:"Too-good offers that ask for ‘training fees’.",     img:IMG.job, likes:"980",  plays:"38k" },
+    { id:"upi",  title:"UPI QR Scam",  desc:"They send a QR; you lose ₹ on scan.",              img:IMG.upi, likes:"1.6k", plays:"75k" },
   ];
 
   /* ---------- hub ---------- */
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 96 }} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: 96 }}
+        showsVerticalScrollIndicator={false}
+      >
         {/* HERO (quiz) */}
         <View style={styles.heroWrap}>
           <ImageBackground
@@ -170,12 +184,16 @@ const Section = ({ title, items, onPress }) => (
 
 const CardBody = ({ card }) => (
   <View style={styles.itemBody}>
-    <Text style={styles.itemTitle} numberOfLines={1}>{card.title}</Text>
-    <Text style={styles.itemDesc}  numberOfLines={2}>{card.desc}</Text>
+    <Text style={styles.itemTitle} numberOfLines={1}>
+      {card.title}
+    </Text>
+    <Text style={styles.itemDesc} numberOfLines={2}>
+      {card.desc}
+    </Text>
     <View style={styles.itemMeta}>
       <View style={styles.metaLeft}>
         <MetaChip icon="thumbs-up-outline" text={card.likes} />
-        <MetaChip icon="play-outline"      text={card.plays} />
+        <MetaChip icon="play-outline" text={card.plays} />
       </View>
       <View style={styles.playPill}>
         <Ionicons name="play" size={16} color="#111" />
@@ -202,7 +220,11 @@ const styles = StyleSheet.create({
   heroWrap: { padding: 16, paddingTop: 12 },
   heroImg: { height: 200, justifyContent: "flex-end" },
   heroRadius: { borderRadius: 16 },
-  heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.35)", borderRadius: 16 },
+  heroOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    borderRadius: 16,
+  },
   heroContent: { padding: 16 },
   heroTitle: { color: "#fff", fontSize: 24, fontWeight: "800" },
   heroSubtitle: { color: "#E5E7EB", marginTop: 4, marginBottom: 10, fontSize: 13 },
@@ -226,7 +248,11 @@ const styles = StyleSheet.create({
   itemBody: { flex: 1, padding: 12, gap: 6, justifyContent: "space-between" },
   itemTitle: { color: "#F3F4F6", fontSize: 16, fontWeight: "800" },
   itemDesc: { color: "#D1D5DB", fontSize: 12 },
-  itemMeta: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  itemMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
   metaLeft: { flexDirection: "row", gap: 10 },
   metaChip: {
     flexDirection: "row",
@@ -238,5 +264,10 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   metaText: { color: "#D1D5DB", fontSize: 12 },
-  playPill: { backgroundColor: ORANGE, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
+  playPill: {
+    backgroundColor: ORANGE,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
 });
